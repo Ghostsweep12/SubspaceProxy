@@ -120,8 +120,6 @@ sudo ip netns exec "$NS" tun2socks \
 
 T2S_PID=$!
 
-### DNS
-
 echo "[*] Configuring DNS..."
 sudo mkdir -p /etc/netns/"$NS"
 echo "nameserver 8.8.8.8" | sudo tee /etc/netns/"$NS"/resolv.conf > /dev/null
