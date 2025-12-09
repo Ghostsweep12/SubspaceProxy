@@ -39,7 +39,7 @@ function check_dependencies {
 
 function setup {
     # Purpose: Set up network namespace, virtual ethernet pair, TUN interface, and start tun2socks
-    # Inputs: 1: IP, 2: PORT, 3: SOCKS_URL, 4: NS, 5: TUN, 6: VETH_HOST, 7: VETH_NS, 8: VETH_HOST_IP, 9: VETH_NS_IP, 10: TUN_IP
+    # Inputs: 1: IP, 2: PORT, 3: SOCKS_URL, 4: NS, 5: TUN, 6: TUN_IP 7: VETH_HOST, 8: VETH_NS, 9: VETH_HOST_IP, 10: VETH_NS_IP
     local IP=$1
     local PORT=$2
     local SOCKS_URL=$3
@@ -90,8 +90,9 @@ function setup {
     T2S_PID=$(sudo ip netns exec "$NS" bash -c \
         "setsid tun2socks -device 'tun://$TUN' -proxy '$SOCKS_URL' -loglevel warning >/dev/null 2>&1 < /dev/null & echo \$!" 2>/dev/null || true)
 
-    # Normalize empty value
-    T2S_PID=${T2S_PID:-}
+    echo "[*] Configuring DNS..."
+    sudo mkdir -p /etc/netns/"$NS"
+    echo "nameserver 8.8.8.8" | sudo tee /etc/netns/"$NS"/resolv.conf > /dev/null
 
     echo "$T2S_PID"
 }
@@ -125,20 +126,18 @@ function reconstruct_user_env {
 
 function run {
     # Purpose: Run command in the namespace with reconstructed user environment
-    # Inputs: 1: REAL_USER, 2: REAL_UID, 3: REAL_HOME, 4: REAL_XDG_RUNTIME,
-    #         5: PULSE_SOCK, 6: DBUS_SOCK, 7: TARGET_DISPLAY, 8: TARGET_XAUTH, 9: TARGET_WAYLAND,
-    #         10: NS, 11: CMD
-    local REAL_USER="$1"
-    local REAL_UID="$2"
-    local REAL_HOME="$3"
-    local REAL_XDG_RUNTIME="$4"
-    local PULSE_SOCK="$5"
-    local DBUS_SOCK="$6"
-    local TARGET_DISPLAY="$7"
-    local TARGET_XAUTH="$8"
-    local TARGET_WAYLAND="$9"
-    local NS="${10}"
-    local CMD="${11}"
+    # Inputs: 1: REAL_USER, 2: REAL_UID, 3: REAL_HOME, 4: REAL_XDG_RUNTIME, 5: PULSE_SOCK, 6: DBUS_SOCK, 7: TARGET_DISPLAY, 8: TARGET_XAUTH, 9: TARGET_WAYLAND, 10: NS, 11: CMD
+    local REAL_USER=$1
+    local REAL_UID=$2
+    local REAL_HOME=$3
+    local REAL_XDG_RUNTIME=$4
+    local PULSE_SOCK=$5
+    local DBUS_SOCK=$6
+    local TARGET_DISPLAY=$7
+    local TARGET_XAUTH=$8
+    local TARGET_WAYLAND=$9
+    local NS=${10}
+    local CMD=${11}
 
     # Export necessary environment variables and run the command in the namespace
     sudo ip netns exec "$NS" sudo -u "$REAL_USER" bash -c "
