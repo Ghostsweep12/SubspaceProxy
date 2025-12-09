@@ -1,0 +1,1 @@
+{"ip": "0", "port": "0", "protocol": "socks5", "socks_url": "socks5://0:0", "cmd": "bash", "namespace": "proxied", "tun_interface": "tun0", "tun_ip": "10.0.0.2", "veth_host": "veth_host", "veth_ns": "veth_ns", "veth_host_ip": "10.200.1.1", "veth_ns_ip": "10.200.1.2", "dns": "8.8.8.8"}

@@ -3,7 +3,7 @@ function ping_test {
     # Inputs: 1: IP address
     local IP=$1
     echo "[*] Checking reachability of $IP..."
-    if ! ping -c 3 -W 5 "$IP" > /dev/null 2>&1; then
+    if ! ping -c 3 -W 5 "$IP"; then
         echo -e "\e[31m [!] Host $IP is unreachable.\e[0m"
         return 1
     fi
@@ -17,7 +17,7 @@ function port_test {
     local IP=$1
     local PORT=$2
     echo "[*] Checking if $PORT on $IP is open..."
-    if ! timeout 1 bash -c "echo > /dev/tcp/$IP/$PORT" 2 > /dev/null; then
+    if ! timeout 1 bash -c "echo > /dev/tcp/$IP/$PORT"; then
         echo -e "\e[31m[!] Port $PORT on $IP is closed or unreachable.\e[0m"
         return 1
     fi
@@ -28,7 +28,7 @@ function port_test {
 function check_dependencies {
     # Purpose: Check for required dependencies
     echo "[*] Checking for tun2socks..."
-    if ! command -v tun2socks > /dev/null 2>&1; then
+    if ! command -v tun2socks; then
         echo -e "\e[31m[!] tun2socks is not installed."
         echo "Install it with: sudo pacman -S tun2socks (or your distro equivalent)\e[0m"
         return 1
@@ -38,16 +38,18 @@ function check_dependencies {
 }
 
 function setup {
+    # Purpose: Set up network namespace, virtual ethernet pair, TUN interface, and start tun2socks
+    # Inputs: 1: IP, 2: PORT, 3: SOCKS_URL, 4: NS, 5: TUN, 6: VETH_HOST, 7: VETH_NS, 8: VETH_HOST_IP, 9: VETH_NS_IP, 10: TUN_IP
     local IP=$1
     local PORT=$2
     local SOCKS_URL=$3
     local NS=$4
     local TUN=$5
-    local VETH_HOST=$6
-    local VETH_NS=$7
-    local VETH_HOST_IP=$8
-    local VETH_NS_IP=$9
-    local TUN_IP=${10}
+    local TUN_IP=$6
+    local VETH_HOST=$7
+    local VETH_NS=$8
+    local VETH_HOST_IP=$9
+    local VETH_NS_IP=${10}
     # Create isolated enviroment
     echo "[*] Creating Namespace: $NS"
     sudo ip netns add "$NS"
@@ -83,23 +85,20 @@ function setup {
 
     # Start tun2socks on TUN to proxy traffic
     echo "[*] Starting tun2socks..."
-    sudo ip netns exec "$NS" tun2socks \
-        -device "tun://$TUN" \
-        -proxy "$SOCKS_URL" \
-        -loglevel warning &
+    # Start tun2socks in the namespace in a detached session so the function returns immediately.
+    # Use bash -c to run setsid and echo the child PID back to stdout.
+    T2S_PID=$(sudo ip netns exec "$NS" bash -c \
+        "setsid tun2socks -device 'tun://$TUN' -proxy '$SOCKS_URL' -loglevel warning >/dev/null 2>&1 < /dev/null & echo \$!" 2>/dev/null || true)
 
-    T2S_PID=$!
-
-    echo "[*] Configuring DNS..."
-    sudo mkdir -p /etc/netns/"$NS"
-    echo "nameserver 8.8.8.8" | sudo tee /etc/netns/"$NS"/resolv.conf > /dev/null
+    # Normalize empty value
+    T2S_PID=${T2S_PID:-}
 
     echo "$T2S_PID"
 }
 
 function reconstruct_user_env {
     # Purpose: Manually rebuild the user's environment because sudo/netns strips it.
-    # Outputs: dict of necessary environment variables
+    # Outputs: JSON with necessary environment variables (stdout)
     REAL_USER=${SUDO_USER:-$USER}
     REAL_UID=$(id -u "$REAL_USER")
     REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
@@ -120,15 +119,27 @@ function reconstruct_user_env {
     TARGET_XAUTH="${XAUTHORITY:-$REAL_HOME/.Xauthority}"
     TARGET_WAYLAND="${WAYLAND_DISPLAY:-wayland-0}"
 
-    echo "$output"
+    # Output JSON
+    printf '%s\n' "{\"REAL_USER\":\"$REAL_USER\",\"REAL_UID\":$REAL_UID,\"REAL_HOME\":\"$REAL_HOME\",\"REAL_XDG_RUNTIME\":\"$REAL_XDG_RUNTIME\",\"PULSE_SOCK\":\"$PULSE_SOCK\",\"DBUS_SOCK\":\"$DBUS_SOCK\",\"TARGET_DISPLAY\":\"$TARGET_DISPLAY\",\"TARGET_XAUTH\":\"$TARGET_XAUTH\",\"TARGET_WAYLAND\":\"$TARGET_WAYLAND\"}"
 }
 
 function run {
     # Purpose: Run command in the namespace with reconstructed user environment
-    # Inputs: 1: dict of user env variables from reconstruct_user_env, 2: namespace, 3: command to run
-    local REAL_USER, REAL_UID, REAL_HOME, REAL_XDG_RUNTIME, PULSE_SOCK, DBUS_SOCK, TARGET_DISPLAY, TARGET_XAUTH, TARGET_WAYLAND = $1
-    local NS=$2
-    local CMD=$3
+    # Inputs: 1: REAL_USER, 2: REAL_UID, 3: REAL_HOME, 4: REAL_XDG_RUNTIME,
+    #         5: PULSE_SOCK, 6: DBUS_SOCK, 7: TARGET_DISPLAY, 8: TARGET_XAUTH, 9: TARGET_WAYLAND,
+    #         10: NS, 11: CMD
+    local REAL_USER="$1"
+    local REAL_UID="$2"
+    local REAL_HOME="$3"
+    local REAL_XDG_RUNTIME="$4"
+    local PULSE_SOCK="$5"
+    local DBUS_SOCK="$6"
+    local TARGET_DISPLAY="$7"
+    local TARGET_XAUTH="$8"
+    local TARGET_WAYLAND="$9"
+    local NS="${10}"
+    local CMD="${11}"
+
     # Export necessary environment variables and run the command in the namespace
     sudo ip netns exec "$NS" sudo -u "$REAL_USER" bash -c "
         export XDG_RUNTIME_DIR='$REAL_XDG_RUNTIME'
