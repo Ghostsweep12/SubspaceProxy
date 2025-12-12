@@ -1,45 +1,33 @@
+# Goldy, <> = from configuration.json, {} = from environment.json
+
 function ping_test {
     # Purpose: Check if a host is reachable via ping
-    # Inputs: 1: IP address
+    # Inputs: <1: IP>
     local IP=$1
-    echo "[*] Checking reachability of $IP..."
     if ! ping -c 3 -W 5 "$IP"; then
-        echo -e "\e[31m [!] Host $IP is unreachable.\e[0m"
+        echo "Host $IP is unreachable."
         return 1
     fi
-    echo -e "\e[32m[+] $IP is reachable\e[0m"
+    echo "$IP is reachable."
     return 0
 }
 
 function port_test {
     # Purpose: Check if a specific port on a host is open
-    # Inputs: 1: IP address, 2: Port number
+    # Inputs: <1: IP, 2: Port>
     local IP=$1
     local PORT=$2
-    echo "[*] Checking if $PORT on $IP is open..."
     if ! timeout 1 bash -c "echo > /dev/tcp/$IP/$PORT"; then
-        echo -e "\e[31m[!] Port $PORT on $IP is closed or unreachable.\e[0m"
+        echo "Port $PORT on $IP is closed or unreachable."
         return 1
     fi
-    echo -e "\e[32m[+] $PORT is open\e[0m"
-    return 0
-}
-
-function check_dependencies {
-    # Purpose: Check for required dependencies
-    echo "[*] Checking for tun2socks..."
-    if ! command -v tun2socks; then
-        echo -e "\e[31m[!] tun2socks is not installed."
-        echo "Install it with: sudo pacman -S tun2socks (or your distro equivalent)\e[0m"
-        return 1
-    fi
-    echo -e "\e[32m[+] tun2socks found.\e[0m"
+    echo "$PORT is open."
     return 0
 }
 
 function setup {
     # Purpose: Set up network namespace, virtual ethernet pair, TUN interface, and start tun2socks
-    # Inputs: 1: IP, 2: PORT, 3: SOCKS_URL, 4: NS, 5: TUN, 6: TUN_IP 7: VETH_HOST, 8: VETH_NS, 9: VETH_HOST_IP, 10: VETH_NS_IP
+    # Inputs: <1: IP, 2: PORT, 3: SOCKS_URL, 4: NS, 5: TUN, 6: TUN_IP 7: VETH_HOST, 8: VETH_NS, 9: VETH_HOST_IP, 10: VETH_NS_IP, 11: DNS>
     local IP=$1
     local PORT=$2
     local SOCKS_URL=$3
@@ -50,13 +38,13 @@ function setup {
     local VETH_NS=$8
     local VETH_HOST_IP=$9
     local VETH_NS_IP=${10}
+    local DNS=${11}
+
     # Create isolated enviroment
-    echo "[*] Creating Namespace: $NS"
     sudo ip netns add "$NS"
     sudo ip netns exec "$NS" ip link set lo up
 
     #Create link from enviroment to host
-    echo "[*] Creating Virtual Ethernet Pair..."
     sudo ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
     sudo ip link set "$VETH_NS" netns "$NS"
 
@@ -72,7 +60,6 @@ function setup {
     sudo sysctl -w net.ipv4.ip_forward=1 > /dev/null
 
     # Create network interface for namespace
-    echo "[*] Creating TUN interface..."
     sudo ip netns exec "$NS" ip tuntap add mode tun dev "$TUN"
     sudo ip netns exec "$NS" ip addr add "$TUN_IP/24" dev "$TUN"
     sudo ip netns exec "$NS" ip link set "$TUN" up
@@ -84,22 +71,22 @@ function setup {
     sudo ip netns exec "$NS" ip route add "$IP" via "$VETH_HOST_IP"
 
     # Start tun2socks on TUN to proxy traffic
-    echo "[*] Starting tun2socks..."
-    # Start tun2socks in the namespace in a detached session so the function returns immediately.
-    # Use bash -c to run setsid and echo the child PID back to stdout.
-    T2S_PID=$(sudo ip netns exec "$NS" bash -c \
-        "setsid tun2socks -device 'tun://$TUN' -proxy '$SOCKS_URL' -loglevel warning >/dev/null 2>&1 < /dev/null & echo \$!" 2>/dev/null || true)
+    sudo ip netns exec "$NS" tun2socks \
+        -device "tun://$TUN" \
+        -proxy "$SOCKS_URL" \
+        -loglevel warning & disown
 
-    echo "[*] Configuring DNS..."
+    T2S_PID=$!
+
     sudo mkdir -p /etc/netns/"$NS"
-    echo "nameserver 8.8.8.8" | sudo tee /etc/netns/"$NS"/resolv.conf > /dev/null
+    echo "nameserver $DNS" | sudo tee /etc/netns/"$NS"/resolv.conf > /dev/null
 
     echo "$T2S_PID"
 }
 
 function reconstruct_user_env {
     # Purpose: Manually rebuild the user's environment because sudo/netns strips it.
-    # Outputs: JSON with necessary environment variables (stdout)
+    # Outputs: JSON with necessary environment variables (stdout then into environment json)
     REAL_USER=${SUDO_USER:-$USER}
     REAL_UID=$(id -u "$REAL_USER")
     REAL_HOME=$(getent passwd "$REAL_USER" | cut -d: -f6)
@@ -126,7 +113,7 @@ function reconstruct_user_env {
 
 function run {
     # Purpose: Run command in the namespace with reconstructed user environment
-    # Inputs: 1: REAL_USER, 2: REAL_UID, 3: REAL_HOME, 4: REAL_XDG_RUNTIME, 5: PULSE_SOCK, 6: DBUS_SOCK, 7: TARGET_DISPLAY, 8: TARGET_XAUTH, 9: TARGET_WAYLAND, 10: NS, 11: CMD
+    # Inputs: {1: REAL_USER, 2: REAL_UID, 3: REAL_HOME, 4: REAL_XDG_RUNTIME, 5: PULSE_SOCK, 6: DBUS_SOCK, 7: TARGET_DISPLAY, 8: TARGET_XAUTH, 9: TARGET_WAYLAND,} <10: NS, 11: CMD>
     local REAL_USER=$1
     local REAL_UID=$2
     local REAL_HOME=$3
@@ -155,13 +142,11 @@ function run {
 
 function cleanup {
     # Purpose: Clean up the created namespace and related resources
-    # Inputs: 1: namespace, 2: tun2socks PID, 3: veth host name
+    # Inputs: <1: namespace,> 2: tun2socks PID, (from setup) <3: veth host name>
     local NS=$1
     local T2S_PID=$2
     local VETH_HOST=$3
-    echo -e "\e[34m[-] Cleaning up..."
     sudo kill $T2S_PID 2>/dev/null
     sudo ip netns delete "$NS" 2>/dev/null
     sudo ip link delete "$VETH_HOST" 2>/dev/null
-    echo -e "[-] Done.\e[0m"
 }
