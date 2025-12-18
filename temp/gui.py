@@ -29,7 +29,7 @@ def call_bash(function_name, *args):
     return subprocess.call(["bash", "-c", command])
 
 config = {}
-config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "configuration.json")
+config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "proxy_configuration.json")
 if os.path.exists(config_path):
     with open(config_path, "r") as f:
         config = json.load(f)
@@ -40,8 +40,6 @@ env = json.loads(stdout)
 environment_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "environment.json")
 with open(environment_path, "w") as f:
     json.dump(env, f)
-
-sock5_url = f"socks5://{config['ip']}:{config['port']}"
 
 T2S_PID = None
 

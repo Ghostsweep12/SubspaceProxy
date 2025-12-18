@@ -25,20 +25,19 @@ function port_test {
     return 0
 }
 
-function setup {
-    # Purpose: Set up network namespace, virtual ethernet pair, TUN interface, and start tun2socks
-    # Inputs: <1: IP, 2: PORT, 3: SOCKS_URL, 4: NS, 5: TUN, 6: TUN_IP 7: VETH_HOST, 8: VETH_NS, 9: VETH_HOST_IP, 10: VETH_NS_IP, 11: DNS>
+function setup_namespace {
+    # Purpose: Set up network namespace, virtual ethernet pair, TUN interface, and DNS.
+    # Inputs: <1: IP, 2: PORT, 3: NS, 4: TUN, 5: TUN_IP 6: VETH_HOST, 7: VETH_NS, 8: VETH_HOST_IP, 9: VETH_NS_IP, 10: DNS>
     local IP=$1
     local PORT=$2
-    local SOCKS_URL=$3
-    local NS=$4
-    local TUN=$5
-    local TUN_IP=$6
-    local VETH_HOST=$7
-    local VETH_NS=$8
-    local VETH_HOST_IP=$9
-    local VETH_NS_IP=${10}
-    local DNS=${11}
+    local NS=$3
+    local TUN=$4
+    local TUN_IP=$5
+    local VETH_HOST=$6
+    local VETH_NS=$7
+    local VETH_HOST_IP=$8
+    local VETH_NS_IP=$9
+    local DNS=${10}
 
     # Create isolated enviroment
     sudo ip netns add "$NS"
@@ -70,21 +69,11 @@ function setup {
     # Proxied data leaves
     sudo ip netns exec "$NS" ip route add "$IP" via "$VETH_HOST_IP"
 
-    # Start tun2socks on TUN to proxy traffic
-    sudo ip netns exec "$NS" tun2socks \
-        -device "tun://$TUN" \
-        -proxy "$SOCKS_URL" \
-        -loglevel warning & disown
-
-    T2S_PID=$!
-
     sudo mkdir -p /etc/netns/"$NS"
     echo "nameserver $DNS" | sudo tee /etc/netns/"$NS"/resolv.conf > /dev/null
-
-    echo "$T2S_PID"
 }
 
-function reconstruct_user_env {
+function reconstruct_user_environment {
     # Purpose: Manually rebuild the user's environment because sudo/netns strips it.
     # Outputs: JSON with necessary environment variables (stdout then into environment json)
     REAL_USER=${SUDO_USER:-$USER}
@@ -111,7 +100,7 @@ function reconstruct_user_env {
     printf '%s\n' "{\"REAL_USER\":\"$REAL_USER\",\"REAL_UID\":$REAL_UID,\"REAL_HOME\":\"$REAL_HOME\",\"REAL_XDG_RUNTIME\":\"$REAL_XDG_RUNTIME\",\"PULSE_SOCK\":\"$PULSE_SOCK\",\"DBUS_SOCK\":\"$DBUS_SOCK\",\"TARGET_DISPLAY\":\"$TARGET_DISPLAY\",\"TARGET_XAUTH\":\"$TARGET_XAUTH\",\"TARGET_WAYLAND\":\"$TARGET_WAYLAND\"}"
 }
 
-function run {
+function run_command_in_namespace {
     # Purpose: Run command in the namespace with reconstructed user environment
     # Inputs: {1: REAL_USER, 2: REAL_UID, 3: REAL_HOME, 4: REAL_XDG_RUNTIME, 5: PULSE_SOCK, 6: DBUS_SOCK, 7: TARGET_DISPLAY, 8: TARGET_XAUTH, 9: TARGET_WAYLAND,} <10: NS, 11: CMD>
     local REAL_USER=$1
@@ -149,4 +138,143 @@ function cleanup {
     sudo kill $T2S_PID 2>/dev/null
     sudo ip netns delete "$NS" 2>/dev/null
     sudo ip link delete "$VETH_HOST" 2>/dev/null
+}
+
+function tun2socks_sock5 {
+    # Purpose: Start tun2socks with SOCKS5, TCP/UDP
+    # Inputs: <1: IP, 2: PORT, 3: NS, 4: TUN> 5: USERNAME, 6: PASSWORD (5/6 optional)
+    local IP=$1
+    local PORT=$2
+    local NS=$3
+    local TUN=$4
+    local USERNAME=$5
+    local PASSWORD=$6
+
+    if [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+        AUTH=""
+    else
+        AUTH="$USERNAME:$PASSWORD@"
+    fi
+
+    sudo ip netns exec "$NS" tun2socks \
+        -device "tun://$TUN" \
+        -proxy "socks5://$AUTH$IP:$PORT" \
+        -loglevel warning & disown
+
+    echo $!
+}
+
+function tun2socks_sock4 {
+    # Purpose: Start tun2socks with SOCKS4, TCP only
+    # Inputs: <1: IP, 2: PORT, 3: NS, 4: TUN> 5: USERID (5 optional)
+    local IP=$1
+    local PORT=$2
+    local NS=$3
+    local TUN=$4
+    local USERID=$5
+
+    if [ -z "$USERID" ]; then
+        USERID=""
+    else
+        USERID="$USERID@"
+    fi
+
+    sudo ip netns exec "$NS" tun2socks \
+        -device "tun://$TUN" \
+        -proxy "socks4://$USERID$IP:$PORT" \
+        -loglevel warning & disown
+
+    echo $!
+}
+
+function tun2socks_http {
+    # Purpose: Start tun2socks with HTTP, TCP only
+    # Inputs: <1: IP, 2: PORT, 3: NS, 4: TUN>
+    local IP=$1
+    local PORT=$2
+    local NS=$3
+    local TUN=$4
+
+    sudo ip netns exec "$NS" tun2socks \
+        -device "tun://$TUN" \
+        -proxy "http://$IP:$PORT" \
+        -loglevel warning & disown
+
+    echo $!
+}
+
+function tun2socks_shadowsocks {
+    # Purpose: Start tun2socks with Shadowsocks, TCP/UDP
+    # Inputs: <1: IP, 2: PORT, 3: NS, 4: TUN> 5: PASSWORD 6: METHOD
+    local IP=$1
+    local PORT=$2
+    local NS=$3
+    local TUN=$4
+    local PASSWORD=$5
+    local METHOD=$6
+
+    if [ -z "$METHOD" ] || [ -z "$PASSWORD" ]; then
+        AUTH=""
+    else
+        AUTH="$METHOD:$PASSWORD@"
+    fi
+
+    sudo ip netns exec "$NS" tun2socks \
+        -device "tun://$TUN" \
+        -proxy "ss://$AUTH$IP:$PORT" \
+        -loglevel warning & disown
+
+    echo $!
+}
+
+function tun2socks_relay {
+    # Purpose: Start tun2socks with relay, UDP over TCP
+    # Inputs: <1: IP, 2: PORT, 3: NS, 4: TUN> 5: USERNAME, 6: PASSWORD (5/6 optional)
+    local IP=$1
+    local PORT=$2
+    local NS=$3
+    local TUN=$4
+    local USERNAME=$5
+    local PASSWORD=$6
+
+    if [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+        AUTH=""
+    else
+        AUTH="$USERNAME:$PASSWORD@"
+    fi
+
+    sudo ip netns exec "$NS" tun2socks \
+        -device "tun://$TUN" \
+        -proxy "relay://$AUTH$IP:$PORT" \
+        -loglevel warning & disown
+
+    echo $!
+}
+
+function tun2socks_direct {
+    # Purpose: Start tun2socks with direct connection, for testing, TCP/UDP
+    # Inputs: <1: NS, 2: TUN>
+    local NS=$1
+    local TUN=$2
+
+    sudo ip netns exec "$NS" tun2socks \
+        -device "tun://$TUN" \
+        -proxy "direct://" \
+        -loglevel warning & disown
+
+    echo $!
+}
+
+function tun2socks_reject {
+    # Purpose: Start tun2socks and simply block all outgoing connections, for testing
+    # Inputs: <1: NS, 2: TUN>
+    local NS=$1
+    local TUN=$2
+
+    sudo ip netns exec "$NS" tun2socks \
+        -device "tun://$TUN" \
+        -proxy "reject://" \
+        -loglevel warning & disown
+
+    echo $!
 }
