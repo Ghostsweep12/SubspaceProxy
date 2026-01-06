@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RippleButton from "@/ui/RippleButton.vue";
+
 import { invoke } from "@tauri-apps/api/core";
 import { ref } from "vue";
 
@@ -11,11 +13,13 @@ async function environment() {
 
 <template>
   <main class="container">
-    <h1>Welcome to Tauri + Vue</h1>
-      <a href="https://vite.dev" target="_blank">
+    <h1>MidnightBox \n MiniBox \n CatinBox</h1>
+      <a>
         <img src="/vite.svg" class="logo vite" alt="Vite logo" />
       </a>
-      <button @click="environment">Configure Environment</button>
+      <div class="grid place-content-center p-8">
+        <RippleButton @click="environment"> Grab Environment Variables </RippleButton>
+      </div>
       <p>{{ env_result }}</p>
   </main>
 </template>
