@@ -6,9 +6,10 @@ mod commands;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        
+        // Vue to Rust FFI here
         .invoke_handler(tauri::generate_handler![
-            commands::configure_environment
+            commands::configure_environment,
+            commands::ping
         ])
 
         .setup(|app| {

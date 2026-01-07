@@ -70,3 +70,30 @@ pub fn configure_environment(app: AppHandle) -> String {
 
     return format!("Wrote environment.json to {:?}", environment_path)
 }
+
+#[tauri::command]
+pub async fn ping(ip: &str) -> Result<String, String> {
+    // Check the latency of the server
+    let (_return_code, stdout, _stderr) = match call_bash_function("ping_test", &[ip]) {
+        Ok(t) => t,
+        Err(e) => {
+            return Err(format!("Failed to ping server: {}", e));
+        }
+    };
+
+    let avg_ping = stdout
+        .lines()
+        .find(|line| line.starts_with("rtt "))
+        .and_then(|line| {
+            line.split('=')
+                .nth(1)?
+                .trim()
+                .split('/')
+                .nth(1)?
+                .parse::<f64>()
+                .ok()
+        })
+        .unwrap_or(0.0);
+
+    return Ok(format!("{} ms", avg_ping))
+}

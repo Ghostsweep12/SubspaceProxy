@@ -5,10 +5,8 @@ function ping_test {
     # Inputs: <1: IP>
     local IP=$1
     if ! ping -c 3 -W 5 "$IP"; then
-        echo "Host $IP is unreachable."
         return 1
     fi
-    echo "$IP is reachable."
     return 0
 }
 
