@@ -23,18 +23,6 @@ function port_test {
     return 0
 }
 
-function check_dependencies {
-    # Purpose: Ensure required commands are available
-    local dependencies=("ip" "sudo" "tun2socks" "ping" "bash" "timeout")
-    for cmd in "${dependencies[@]}"; do
-        if ! command -v "$cmd" &> /dev/null; then
-            echo "Dependency $cmd is missing. Please install it."
-            return 1
-        fi
-    done
-    return 0
-}
-
 function setup_namespace {
     # Purpose: Set up network namespace, virtual ethernet pair, TUN interface, and DNS.
     # Inputs: <1: IP, 2: PORT, 3: NS, 4: TUN, 5: TUN_IP 6: VETH_HOST, 7: VETH_NS, 8: VETH_HOST_IP, 9: VETH_NS_IP, 10: DNS>

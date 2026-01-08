@@ -9,7 +9,8 @@ pub fn run() {
         // Vue to Rust FFI here
         .invoke_handler(tauri::generate_handler![
             commands::configure_environment,
-            commands::ping
+            commands::ping,
+            commands::save_profile
         ])
 
         .setup(|app| {

@@ -13,6 +13,7 @@ export default defineConfig(async () => ({
     tailwindcss()
   ],
 
+  // Path mapping
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
