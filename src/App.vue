@@ -12,16 +12,8 @@ import {
 // Library imports
 import { invoke } from "@tauri-apps/api/core";
 import { ref, reactive } from "vue";
-
-// Environment
-const env_result = ref<string | null>(null);
-async function environment() {
-  try {
-    env_result.value = await invoke("configure_environment");
-  } catch (error) {
-    env_result.value = `Error: ${error}`;
-  }
-}
+import { open } from "@tauri-apps/plugin-dialog";
+import { appDataDir, join } from "@tauri-apps/api/path";
 
 // Ping
 const ping = ref<string | null>(null);
@@ -62,8 +54,8 @@ async function ping_server(ip: string) {
 }
 
 // Profile making
-const showModal = ref(false);
-const saveStatus = ref("");
+const show_modal = ref(false);
+const save_status = ref("");
 
 const form = reactive({
   name: "",
@@ -74,7 +66,7 @@ const form = reactive({
   cmd: ""
 });
 
-const proxyTypes = [
+const proxy_types = [
   "socks5",
   "socks4",
   "http",
@@ -85,7 +77,7 @@ const proxyTypes = [
 ];
 
 async function saveProfile() {
-  saveStatus.value = "Saving...";
+  save_status.value = "Saving...";
   try {
     const result = await invoke("save_profile", {
       name: form.name,
@@ -95,10 +87,10 @@ async function saveProfile() {
       protocol: form.protocol,
       cmd: form.cmd
     });
-    saveStatus.value = result as string;
+    save_status.value = result as string;
   } 
   catch (error) {
-    saveStatus.value = `Error: ${error}`;
+    save_status.value = `Error: ${error}`;
   }
 }
 
@@ -128,13 +120,83 @@ const dns_placeholders = [
 ];
 
 const cmd_placeholders = [
-  "bash",
+  "main.py",
   "flatpak run org.mozilla.firefox",
-  "hyprland",
+  "steam",
 ];
 
-//
+// Profile selection
+const profile_path = ref<string | null>(null);
 
+async function select_profile() {
+  const app_data = await appDataDir();
+  const selected = await open({
+    defaultPath: await join(app_data, "profiles"),
+    multiple: false,
+    filters: [{ name: "JSON", extensions: ["json"] }],
+  });
+
+  if (selected && typeof selected === "string") {
+    profile_path.value = selected;
+  }
+}
+
+// Namespace creating
+const ns_result = ref<string | null>(null);
+
+async function setup_namespace() {
+  if (!profile_path.value || !profile_path.value.endsWith(".json")) {
+    ns_result.value = "No valid profile selected";
+    return;
+  }
+  try {
+    ns_result.value = await invoke("setup_namespace", {
+      profilePath: profile_path.value,
+    });
+  } 
+  catch (error) {
+    ns_result.value = `Error creating namespace: ${error}`;
+  }
+}
+
+// Running
+const run_result = ref<string | null>(null);
+
+async function run() {
+  if (!profile_path.value) {
+    run_result.value = "No valid profile selected";
+    return;
+  }
+  try {
+    run_result.value = await invoke("run", {
+      profilePath: profile_path.value,
+    });
+  } 
+  catch (error) {
+    run_result.value = `Error running: ${error}`;
+  }
+}
+
+// Cleanup
+const cleanup_result = ref<string | null>(null);
+
+async function cleanup() {
+  if (!profile_path.value) {
+    cleanup_result.value = "No valid profile selected";
+    return;
+  }
+  try {
+    const app_data = await appDataDir();
+    const pid_file = await join(app_data, "pid.json");
+    cleanup_result.value = await invoke("cleanup", {
+      profilePath: profile_path.value,
+      pidPath: pid_file.toString(),
+    });
+  } 
+  catch (error) {
+    cleanup_result.value = `Error cleaning up: ${error}`;
+  }
+}
 </script>
 
 <template>
@@ -145,13 +207,31 @@ const cmd_placeholders = [
     </a>
 
     <div class="grid place-content-center p-5">
-      <RippleButton @click="environment"> Grab Environment Variables </RippleButton>
+      <RippleButton @click="select_profile">1.Select profile config</RippleButton>
     </div>
 
-    <p>{{ env_result }}</p>
+    <p>{{ profile_path }}</p>
 
     <div class="grid place-content-center p-5">
-      <RippleButton @click="ping_server('0.0.0.0')" :disabled="is_pinging"> Ping Server </RippleButton>
+      <RippleButton @click="setup_namespace"> 2.Create Namespace </RippleButton>
+    </div>
+
+    <p>{{ ns_result }}</p>
+
+    <div class="grid place-content-center p-5">
+      <RippleButton @click="run"> 3.Run </RippleButton>
+    </div>
+
+    <p>{{ run_result }}</p>
+
+    <div class="grid place-content-center p-5">
+      <RippleButton @click="cleanup"> 4.Cleanup </RippleButton>
+    </div>
+
+    <p>{{ cleanup_result }}</p>
+
+    <div class="grid place-content-center p-5">
+      <RippleButton @click="ping_server(form.ip)" :disabled="is_pinging"> Ping Server </RippleButton>
     </div>
 
     <p v-if="is_pinging">
@@ -163,10 +243,10 @@ const cmd_placeholders = [
     </p>
 
     <div class="grid place-content-center p-5">
-      <RippleButton @click="showModal = true" class="bg-blue-600"> + Create Profile </RippleButton>
+      <RippleButton @click="show_modal = true" class="bg-blue-600"> + Create Profile </RippleButton>
     </div>
 
-    <div v-if="showModal" class="modal-overlay">
+    <div v-if="show_modal" class="modal-overlay">
       <div class="modal-content">
         <h2>New Proxy Profile</h2>
 
@@ -197,7 +277,7 @@ const cmd_placeholders = [
             </RippleButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <DropdownMenuItem v-for="type in proxyTypes" :key="type" @click="form.protocol = type">
+            <DropdownMenuItem v-for="type in proxy_types" :key="type" @click="form.protocol = type">
               {{ type.toUpperCase() }}
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -209,11 +289,11 @@ const cmd_placeholders = [
         </div>
 
         <div class="modal-actions grid place-content-center p-5">
-          <RippleButton @click="showModal = false">Close</RippleButton>
+          <RippleButton @click="show_modal = false">Close</RippleButton>
           <RippleButton @click="saveProfile">Save</RippleButton>
         </div>
 
-        <p class="status-text">{{ saveStatus }}</p>
+        <p class="status-text">{{ save_status }}</p>
       </div>
     </div>
   </main>
