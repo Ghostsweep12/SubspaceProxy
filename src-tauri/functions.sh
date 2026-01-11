@@ -204,6 +204,7 @@ function tun2socks_shadowsocks {
             > /dev/null 2>&1 &
         echo \$!
     "
+}
 
 function tun2socks_relay {
     # Purpose: Start tun2socks with relay, UDP over TCP
