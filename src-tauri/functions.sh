@@ -188,8 +188,8 @@ function tun2socks_shadowsocks {
     local PORT=$2
     local NS=$3
     local TUN=$4
-    local PASSWORD=${5:-}
-    local METHOD=${6:-}
+    local METHOD=${5:-}
+    local PASSWORD=${6:-}
     if [ -z "$METHOD" ] || [ -z "$PASSWORD" ]; then
         AUTH=""
     else

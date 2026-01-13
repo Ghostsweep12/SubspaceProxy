@@ -6,6 +6,7 @@ interface RippleButtonProps {
   class?: HTMLAttributes["class"];
   rippleColor?: string;
   duration?: number;
+  disabled?: boolean;
 }
 
 const props = withDefaults(defineProps<RippleButtonProps>(), {
@@ -21,6 +22,7 @@ const rippleButtonRef = ref<HTMLButtonElement | null>(null);
 const buttonRipples = ref<Array<{ x: number; y: number; size: number; key: number }>>([]);
 
 function handleClick(event: MouseEvent) {
+  if (props.disabled) return;
   createRipple(event);
   emit("click", event);
 }
@@ -51,8 +53,9 @@ watchEffect(() => {
 <template>
   <button
     ref="rippleButtonRef"
-    class="bg-background text-primary relative flex cursor-pointer items-center justify-center overflow-hidden rounded-lg border-2 px-4 py-2 text-center"
-    :class="[$props.class]"
+    :disabled="props.disabled"
+    :class="[$props.class, props.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer']"
+    class="bg-background text-primary relative flex items-center justify-center overflow-hidden rounded-lg border-2 px-4 py-2 text-center"
     :style="{ '--duration': `${$props.duration}ms` }"
     @click="handleClick"
   >

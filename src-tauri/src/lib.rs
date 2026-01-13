@@ -13,7 +13,8 @@ pub fn run() {
             commands::save_profile,
             commands::setup_namespace,
             commands::run,
-            commands::cleanup
+            commands::cleanup,
+            commands::fetch_profile,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

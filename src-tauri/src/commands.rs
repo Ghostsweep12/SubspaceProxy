@@ -11,8 +11,9 @@ pub struct Profile {
     ip: String,
     port: String,
     protocol: String,
-    cmd: String,
     namespace: String,
+    username: String,
+    password: String,
     tun_interface: String,
     tun_ip: String,
     veth_host: String,
@@ -60,9 +61,8 @@ pub fn call_bash_function(function_name: &str, args: &[&str]) -> Result<(i32, St
 }
 
 #[tauri::command]
-pub async fn setup_namespace(app: AppHandle,profile_path: String) -> Result<String, String> {
-    let profile = std::fs::read_to_string(&profile_path).map_err(|e| format!("Failed to read profile file: {}", e))?;
-    let profile_data: Profile = serde_json::from_str(&profile).map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
+pub async fn setup_namespace(app: AppHandle, profile_path: String) -> Result<String, String> {
+    let profile_data = fetch_profile(profile_path.clone()).await?;
 
     call_bash_function(
         "setup_namespace",
@@ -93,6 +93,8 @@ pub async fn setup_namespace(app: AppHandle,profile_path: String) -> Result<Stri
                 &profile_data.port,
                 &profile_data.namespace,
                 &profile_data.tun_interface,
+                &profile_data.username,
+                &profile_data.password,
             ]).map_err(|e| format!("Failed to setup SOCKS5: {}", e))?;
             stdout.trim().to_string()
         }
@@ -102,6 +104,7 @@ pub async fn setup_namespace(app: AppHandle,profile_path: String) -> Result<Stri
                 &profile_data.port,
                 &profile_data.namespace,
                 &profile_data.tun_interface,
+                &profile_data.username,
             ]).map_err(|e| format!("Failed to setup SOCKS4: {}", e))?;
             stdout.trim().to_string()
         }
@@ -120,6 +123,8 @@ pub async fn setup_namespace(app: AppHandle,profile_path: String) -> Result<Stri
                 &profile_data.port,
                 &profile_data.namespace,
                 &profile_data.tun_interface,
+                &profile_data.username,
+                &profile_data.password,
             ]).map_err(|e| format!("Failed to setup Shadowsocks: {}", e))?;
             stdout.trim().to_string()
         }
@@ -129,6 +134,8 @@ pub async fn setup_namespace(app: AppHandle,profile_path: String) -> Result<Stri
                 &profile_data.port,
                 &profile_data.namespace,
                 &profile_data.tun_interface,
+                &profile_data.username,
+                &profile_data.password,
             ]).map_err(|e| format!("Failed to setup Relay: {}", e))?;
             stdout.trim().to_string()
         }
@@ -157,13 +164,12 @@ pub async fn setup_namespace(app: AppHandle,profile_path: String) -> Result<Stri
 }
 
 #[tauri::command]
-pub async fn run(profile_path: String) -> Result<String, String> {
-    let profile = std::fs::read_to_string(&profile_path).map_err(|e| format!("Failed to read profile file: {}", e))?;
-    let profile_data: Profile = serde_json::from_str(&profile).map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
+pub async fn run(profile_path: String, cmd: String) -> Result<String, String> {
+    let profile_data = fetch_profile(profile_path.clone()).await?;
 
     call_bash_function("run_command_in_namespace", &[
         &profile_data.namespace,
-        &profile_data.cmd,
+        &cmd,
     ])
     .map_err(|e| format!("Failed to run profile: {}", e))?;
 
@@ -172,8 +178,7 @@ pub async fn run(profile_path: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn cleanup(profile_path: String, pid_path: String) -> Result<String, String> {
-    let profile = std::fs::read_to_string(&profile_path).map_err(|e| format!("Failed to read profile file: {}", e))?;
-    let profile_data: Profile = serde_json::from_str(&profile).map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
+    let profile_data = fetch_profile(profile_path.clone()).await?;
     let tun2socks_pid = std::fs::read_to_string(&pid_path).map_err(|e| format!("Failed to read tun2socks PID file: {}", e))?;
 
     call_bash_function("cleanup", &[
@@ -193,23 +198,31 @@ pub async fn save_profile(
     ip: String,
     port: String,
     protocol: String,
-    cmd: String,
     dns: String,
+    namespace: String,
+    username: String,
+    password: String,
+    tun_interface: String,
+    tun_ip: String,
+    veth_host: String,
+    veth_ns: String,
+    veth_host_ip: String,
+    veth_ns_ip: String,
 ) -> Result<String, String> {
     let profile = Profile {
         ip,
         port,
         protocol,
-        cmd,
-        dns,
-        // Defaults
-        namespace: "proxied".to_string(),
-        tun_interface: "tun0".to_string(),
-        tun_ip: "10.0.0.2".to_string(),
-        veth_host: "veth_host".to_string(),
-        veth_ns: "veth_ns".to_string(),
-        veth_host_ip: "10.200.1.1".to_string(),
-        veth_ns_ip: "10.200.1.2".to_string(),
+        dns: if dns.is_empty() { "8.8.8.8".to_string() } else { dns },
+        namespace: if namespace.is_empty() { "namespace".to_string() } else { namespace },
+        username: if username.is_empty() { "".to_string() } else { username },
+        password: if password.is_empty() { "".to_string() } else { password },
+        tun_interface: if tun_interface.is_empty() { "tun0".to_string() } else { tun_interface },
+        tun_ip: if tun_ip.is_empty() { "10.0.0.2".to_string() } else { tun_ip },
+        veth_host: if veth_host.is_empty() { "veth_host".to_string() } else { veth_host },
+        veth_ns: if veth_ns.is_empty() { "veth_ns".to_string() } else { veth_ns },
+        veth_host_ip: if veth_host_ip.is_empty() { "10.200.1.1".to_string() } else { veth_host_ip },
+        veth_ns_ip: if veth_ns_ip.is_empty() { "10.200.1.2".to_string() } else { veth_ns_ip },
     };
 
     let app_data_dir = app
@@ -231,28 +244,33 @@ pub async fn save_profile(
 }
 
 #[tauri::command]
+pub async fn fetch_profile(profile_path: String) -> Result<Profile, String> {
+    let profile = std::fs::read_to_string(profile_path).map_err(|e| format!("Failed to read profile file: {}", e))?;
+    let profile_data: Profile = serde_json::from_str(&profile).map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
+    Ok(profile_data)
+}
+
+#[tauri::command]
 pub async fn ping(ip: &str) -> Result<String, String> {
     // Check the latency of the server
-    let (_return_code, stdout, _stderr) = match call_bash_function("ping_test", &[ip]) {
-        Ok(t) => t,
-        Err(e) => {
-            return Err(format!("Failed to ping server: {}", e));
-        }
-    };
+    let (_return_code, stdout, _stderr) = call_bash_function("ping_test", &[ip]).map_err(|e| format!("Failed to ping server: {}", e))?;
 
     let avg_ping = stdout
         .lines()
         .find(|line| line.starts_with("rtt "))
         .and_then(|line| {
-            line.split('=')
-                .nth(1)?
-                .trim()
+            line.split(' ')
+                .nth(3)?
                 .split('/')
                 .nth(1)?
                 .parse::<f64>()
                 .ok()
         })
         .unwrap_or(0.0);
+
+        if avg_ping == 0.0 {
+            return Err("Server is unreachable".to_string());
+        }
 
     return Ok(format!("{} ms", avg_ping));
 }
