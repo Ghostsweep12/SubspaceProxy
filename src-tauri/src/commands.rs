@@ -23,6 +23,19 @@ pub struct Profile {
     dns: String,
 }
 
+#[derive(Serialize, Debug)]
+pub struct ProfileEntry {
+    filename: String,
+    path: String,
+    profile: Profile,
+}
+
+#[derive(Serialize, Debug)]
+pub struct NamespaceInfo {
+    name: String,
+    processes: String,
+}
+
 pub fn call_bash_function(function_name: &str, args: &[&str]) -> Result<(i32, String, String), String> {
     // Call a bash function from functions.sh and supply it arguements, then capture its output
     let exe_path =
@@ -61,7 +74,57 @@ pub fn call_bash_function(function_name: &str, args: &[&str]) -> Result<(i32, St
 }
 
 #[tauri::command]
-pub async fn setup_namespace(app: AppHandle, profile_path: String) -> Result<String, String> {
+pub async fn list_profiles(app: AppHandle) -> Result<Vec<ProfileEntry>, String> {
+    // List all the profiles
+    let app_data_dir = app.path().resolve("profiles", BaseDirectory::AppData).map_err(|e| e.to_string())?;
+    
+    if !app_data_dir.exists() {
+        std::fs::create_dir_all(&app_data_dir).map_err(|e| format!("Failed to create profiles directory: {}", e))?;
+    }
+
+    let mut profiles = Vec::new();
+    let entries = std::fs::read_dir(app_data_dir).map_err(|e| e.to_string())?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) == Some("json") {
+            let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            match serde_json::from_str::<Profile>(&content) {
+                Ok(profile) => {
+                    profiles.push(ProfileEntry {
+                        filename: path.file_stem().unwrap().to_string_lossy().to_string(),
+                        path: path.to_string_lossy().to_string(),
+                        profile,
+                    });
+                }
+                Err(_) => continue,
+            }
+        }
+    }
+    Ok(profiles)
+}
+
+#[tauri::command]
+pub async fn get_active_namespaces() -> Result<Vec<NamespaceInfo>, String> {
+    // Read the currently active namespaces and their associated processes
+    let (_return_code, stdout, _stderr) = call_bash_function("get_active_namespaces", &[]).map_err(|e| e.to_string())?;
+    let ns_list: Vec<&str> = stdout.trim().split('\n').filter(|s| !s.is_empty()).collect();
+    
+    let mut infos = Vec::new();
+    for ns in ns_list {
+        let (_return_code, pstdout, _stderr) = call_bash_function("get_ns_pids", &[ns]).unwrap_or((0, "".to_string(), "".to_string()));
+        infos.push(NamespaceInfo {
+            name: ns.to_string(),
+            processes: pstdout.trim().to_string(),
+        });
+    }
+    Ok(infos)
+}
+
+#[tauri::command]
+pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
+    // Create the namespace with all interfaces and initalize tun2socks
     let profile_data = fetch_profile(profile_path.clone()).await?;
 
     call_bash_function(
@@ -81,14 +144,9 @@ pub async fn setup_namespace(app: AppHandle, profile_path: String) -> Result<Str
     )
     .map_err(|e| format!("Failed to setup namespace: {}", e))?;
 
-    let pid_path = app
-        .path()
-        .resolve("pid.json", BaseDirectory::AppData)
-        .map_err(|e| format!("Failed to resolve PID path: {}", e))?;
-
-    let tun2socks_pid = match profile_data.protocol.as_str() {
+    match profile_data.protocol.as_str() {
         "socks5" => {
-            let (_return_code, stdout, _stderr) = call_bash_function("tun2socks_socks5", &[
+            call_bash_function("tun2socks_socks5", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
@@ -96,29 +154,26 @@ pub async fn setup_namespace(app: AppHandle, profile_path: String) -> Result<Str
                 &profile_data.username,
                 &profile_data.password,
             ]).map_err(|e| format!("Failed to setup SOCKS5: {}", e))?;
-            stdout.trim().to_string()
         }
         "socks4" => {
-            let (_return_code, stdout, _stderr) = call_bash_function("tun2socks_socks4", &[
+            call_bash_function("tun2socks_socks4", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
                 &profile_data.tun_interface,
                 &profile_data.username,
             ]).map_err(|e| format!("Failed to setup SOCKS4: {}", e))?;
-            stdout.trim().to_string()
         }
         "http" => {
-            let (_return_code, stdout, _stderr) = call_bash_function("tun2socks_http", &[
+            call_bash_function("tun2socks_http", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
                 &profile_data.tun_interface,
             ]).map_err(|e| format!("Failed to setup HTTP: {}", e))?;
-            stdout.trim().to_string()
         }
         "shadowsocks" => {
-            let (_return_code, stdout, _stderr) = call_bash_function("tun2socks_shadowsocks", &[
+            call_bash_function("tun2socks_shadowsocks", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
@@ -126,10 +181,9 @@ pub async fn setup_namespace(app: AppHandle, profile_path: String) -> Result<Str
                 &profile_data.username,
                 &profile_data.password,
             ]).map_err(|e| format!("Failed to setup Shadowsocks: {}", e))?;
-            stdout.trim().to_string()
         }
         "relay" => {
-            let (_return_code, stdout, _stderr) = call_bash_function("tun2socks_relay", &[
+            call_bash_function("tun2socks_relay", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
@@ -137,34 +191,30 @@ pub async fn setup_namespace(app: AppHandle, profile_path: String) -> Result<Str
                 &profile_data.username,
                 &profile_data.password,
             ]).map_err(|e| format!("Failed to setup Relay: {}", e))?;
-            stdout.trim().to_string()
         }
         "direct" => {
-            let (_return_code, stdout, _stderr) = call_bash_function("tun2socks_direct", &[
+            call_bash_function("tun2socks_direct", &[
                 &profile_data.namespace,
                 &profile_data.tun_interface,
             ]).map_err(|e| format!("Failed to setup Direct: {}", e))?;
-            stdout.trim().to_string()
         }
         "reject" => {
-            let (_return_code, stdout, _stderr) = call_bash_function("tun2socks_reject", &[
+            call_bash_function("tun2socks_reject", &[
                 &profile_data.namespace,
                 &profile_data.tun_interface,
             ]).map_err(|e| format!("Failed to setup Reject: {}", e))?;
-            stdout.trim().to_string()
         }
         _ => {
             return Err(format!("Unsupported protocol: {}", profile_data.protocol));
         }
     };
 
-    std::fs::write(&pid_path, &tun2socks_pid).map_err(|e| format!("Failed to write pid.json: {}", e))?;
-
-    Ok(format!("Namespace created, and tun2socks PID is {}", &tun2socks_pid))
+    Ok(format!("Namespace created"))
 }
 
 #[tauri::command]
 pub async fn run(profile_path: String, cmd: String) -> Result<String, String> {
+    // Run command in namespace
     let profile_data = fetch_profile(profile_path.clone()).await?;
 
     call_bash_function("run_command_in_namespace", &[
@@ -177,13 +227,12 @@ pub async fn run(profile_path: String, cmd: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn cleanup(profile_path: String, pid_path: String) -> Result<String, String> {
+pub async fn cleanup(profile_path: String) -> Result<String, String> {
+    // Remove the namespace and associated interfaces
     let profile_data = fetch_profile(profile_path.clone()).await?;
-    let tun2socks_pid = std::fs::read_to_string(&pid_path).map_err(|e| format!("Failed to read tun2socks PID file: {}", e))?;
-
+    
     call_bash_function("cleanup", &[
         &profile_data.namespace,
-        &tun2socks_pid,
         &profile_data.veth_host,
     ])
     .map_err(|e| format!("Failed to cleanup profile: {}", e))?;
@@ -209,30 +258,27 @@ pub async fn save_profile(
     veth_host_ip: String,
     veth_ns_ip: String,
 ) -> Result<String, String> {
+    // Save formatted JSON to appdata
     let profile = Profile {
         ip,
         port,
         protocol,
-        dns: if dns.is_empty() { "8.8.8.8".to_string() } else { dns },
-        namespace: if namespace.is_empty() { "namespace".to_string() } else { namespace },
-        username: if username.is_empty() { "".to_string() } else { username },
-        password: if password.is_empty() { "".to_string() } else { password },
-        tun_interface: if tun_interface.is_empty() { "tun0".to_string() } else { tun_interface },
-        tun_ip: if tun_ip.is_empty() { "10.0.0.2".to_string() } else { tun_ip },
-        veth_host: if veth_host.is_empty() { "veth_host".to_string() } else { veth_host },
-        veth_ns: if veth_ns.is_empty() { "veth_ns".to_string() } else { veth_ns },
-        veth_host_ip: if veth_host_ip.is_empty() { "10.200.1.1".to_string() } else { veth_host_ip },
-        veth_ns_ip: if veth_ns_ip.is_empty() { "10.200.1.2".to_string() } else { veth_ns_ip },
+        dns,
+        namespace,
+        username,
+        password,
+        tun_interface,
+        tun_ip,
+        veth_host,
+        veth_ns,
+        veth_host_ip,
+        veth_ns_ip,
     };
 
     let app_data_dir = app
         .path()
         .resolve("profiles", BaseDirectory::AppData)
         .map_err(|e| format!("Failed to resolve app data path: {}", e))?;
-
-    if !app_data_dir.exists() {
-        std::fs::create_dir_all(&app_data_dir).map_err(|e| format!("Failed to create profiles directory: {}", e))?;
-    }
 
     let filename = format!("{}.json", name.replace(" ", "_"));
     let file_path = app_data_dir.join(filename);
@@ -263,14 +309,30 @@ pub async fn ping(ip: &str) -> Result<String, String> {
                 .nth(3)?
                 .split('/')
                 .nth(1)?
-                .parse::<f64>()
+                .parse::<String>()
                 .ok()
         })
-        .unwrap_or(0.0);
+        .unwrap_or("0".to_string());
 
-        if avg_ping == 0.0 {
+        if avg_ping == "0" {
             return Err("Server is unreachable".to_string());
         }
 
-    return Ok(format!("{} ms", avg_ping));
+    Ok(avg_ping)
+}
+
+#[tauri::command]
+pub async fn port(ip: &str, port: &str) -> Result<String, String> {
+    // Check if the port is open
+    let (_return_code, stdout, _stderr) = call_bash_function("port_test", &[ip, port]).map_err(|e| e.to_string())?;
+    
+    let words: Vec<&str> = stdout.split_whitespace().collect();
+
+    let result = if words.len() >= 3 {
+        words[words.len() - 3..].join(" ")
+    } else {
+        stdout.trim().to_string()
+    };
+
+    Ok(result)
 }

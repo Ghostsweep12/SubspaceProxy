@@ -1,5 +1,5 @@
 function ping_test {
-    # Purpose: Check if a host is reachable via ping
+    # Check if a host is reachable via ping
     # Inputs: 1: IP
     local IP=$1
     if ! ping -c 3 -W 5 "$IP"; then
@@ -9,7 +9,7 @@ function ping_test {
 }
 
 function port_test {
-    # Purpose: Check if a specific port on a host is open
+    # Check if a specific port on a host is open
     # Inputs: 1: IP, 2: Port
     local IP=$1
     local PORT=$2
@@ -21,8 +21,30 @@ function port_test {
     return 0
 }
 
+function get_active_namespaces {
+    # Returns list of namespaces created by ip netns
+    ip netns list | cut -d' ' -f1
+}
+
+function get_ns_pids {
+    # Get PIDs inside a given namespace
+    # Inputs: 1: NS
+    local NS=$1
+    
+    local PIDS=$(sudo ip netns pids "$NS" 2>/dev/null)
+    
+    if [ -z "$PIDS" ]; then
+        echo ""
+        return
+    fi
+
+    for PID in $PIDS; do
+        ps -p "$PID" -o comm= 2>/dev/null
+    done | sort | uniq | tr '\n' ',' | sed 's/,$//'
+}
+
 function setup_namespace {
-    # Purpose: Set up network namespace, virtual ethernet pair, TUN interface, and DNS.
+    # Set up network namespace, virtual ethernet pair, TUN interface, and DNS.
     # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: TUN_IP 6: VETH_HOST, 7: VETH_NS, 8: VETH_HOST_IP, 9: VETH_NS_IP, 10: DNS
     local IP=$1
     local PORT=$2
@@ -61,7 +83,7 @@ function setup_namespace {
 }
 
 function run_command_in_namespace {
-    # Purpose: Run command in the namespace with reconstructed user environment
+    # Run command in the namespace with reconstructed user environment
     # Inputs: 1: NS, 2: CMD
     local NS=$1
     local CMD=$2
@@ -102,20 +124,23 @@ function run_command_in_namespace {
 }
 
 function cleanup {
-    # Purpose: Clean up the created namespace and related resources
-    # Inputs: 1: namespace, 2: tun2socks PID, 3: veth host name
+    # Clean up the created namespace and related resources
+    # Inputs: 1: namespace, 2: veth host name
     local NS=$1
-    local T2S_PID=$2
-    local VETH_HOST=$3
+    local VETH_HOST=$2
 
-    sudo kill "$T2S_PID" 2>/dev/null || true
+    PIDS=$(sudo ip netns pids "$NS")
+    if [ -n "$PIDS" ]; then
+        sudo kill -9 $PIDS 2>/dev/null || true
+    fi
+
     sudo ip netns delete "$NS" 2>/dev/null || true
     sudo ip link delete "$VETH_HOST" 2>/dev/null || true
     sudo rm -rf /etc/netns/"$NS"
 }
 
 function tun2socks_socks5 {
-    # Purpose: Start tun2socks with SOCKS5, TCP/UDP
+    # Start tun2socks with SOCKS5, TCP/UDP
     # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: USERNAME, 6: PASSWORD (5/6 optional)
     local IP=$1
     local PORT=$2
@@ -140,7 +165,7 @@ function tun2socks_socks5 {
 }
 
 function tun2socks_socks4 {
-    # Purpose: Start tun2socks with SOCKS4, TCP only
+    # Start tun2socks with SOCKS4, TCP only
     # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: USERID (5 optional)
     local IP=$1
     local PORT=$2
@@ -164,7 +189,7 @@ function tun2socks_socks4 {
 }
 
 function tun2socks_http {
-    # Purpose: Start tun2socks with HTTP, TCP only
+    # Start tun2socks with HTTP, TCP only
     # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN
     local IP=$1
     local PORT=$2
@@ -182,7 +207,7 @@ function tun2socks_http {
 }
 
 function tun2socks_shadowsocks {
-    # Purpose: Start tun2socks with Shadowsocks, TCP/UDP
+    # Start tun2socks with Shadowsocks, TCP/UDP
     # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: PASSWORD, 6: METHOD (5/6 optional)
     local IP=$1
     local PORT=$2
@@ -207,7 +232,7 @@ function tun2socks_shadowsocks {
 }
 
 function tun2socks_relay {
-    # Purpose: Start tun2socks with relay, UDP over TCP
+    # Start tun2socks with relay, UDP over TCP
     # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: USERNAME, 6: PASSWORD (5/6 optional)
     local IP=$1
     local PORT=$2
@@ -232,7 +257,7 @@ function tun2socks_relay {
 }
 
 function tun2socks_direct {
-    # Purpose: Start tun2socks with direct connection, for testing, TCP/UDP
+    # Start tun2socks with direct connection, for testing, TCP/UDP
     # Inputs: 1: NS, 2: TUN
     local NS=$1
     local TUN=$2
@@ -248,7 +273,7 @@ function tun2socks_direct {
 }
 
 function tun2socks_reject {
-    # Purpose: Start tun2socks and simply block all outgoing connections, for testing
+    # Start tun2socks and simply block all outgoing connections, for testing
     # Inputs: 1: NS, 2: TUN
     local NS=$1
     local TUN=$2

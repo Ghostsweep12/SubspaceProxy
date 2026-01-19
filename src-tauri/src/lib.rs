@@ -15,6 +15,9 @@ pub fn run() {
             commands::run,
             commands::cleanup,
             commands::fetch_profile,
+            commands::list_profiles,
+            commands::port,
+            commands::get_active_namespaces,
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

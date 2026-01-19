@@ -11,54 +11,15 @@ import {
 
 // Library imports
 import { invoke } from "@tauri-apps/api/core";
-import { ref, reactive } from "vue";
-import { open } from "@tauri-apps/plugin-dialog";
-import { appDataDir, join } from "@tauri-apps/api/path";
-
-// Ping
-const ping = ref<string | null>(null);
-const is_pinging = ref(false);
-const dots = ref(".");
-let dots_timer: number | null = null;
-
-function startDots() {
-  dots.value = ".";
-  dots_timer = window.setInterval(() => {
-    dots.value = dots.value.length >= 3 ? "." : dots.value + ".";
-  }, 250);
-}
-
-function stopDots() {
-  if (dots_timer !== null) {
-    clearInterval(dots_timer);
-    dots_timer = null;
-  }
-}
-
-async function ping_server(ip: string) {
-  is_pinging.value = true;
-  ping.value = null;
-
-  startDots();
-
-  try {
-    ping.value = await invoke("ping", { ip });
-  } 
-  catch (error) {
-    ping.value = `Error: ${error}`;
-  } 
-  finally {
-    is_pinging.value = false;
-    stopDots();
-  }
-}
+import { ref, reactive, onMounted, onUnmounted } from "vue";
 
 // Profile making
 const show_modal = ref(false);
 const show_advanced_modal = ref(false);
 const save_status = ref("");
+const form_errors = reactive({ name: false, ip: false, port: false, protocol: false });
 
-type Profile = {
+type profile = {
     ip?: string,
     port?: string,
     protocol?: string,
@@ -74,22 +35,43 @@ type Profile = {
     dns?: string,
 }
 
+type profile_entry = {
+    filename: string,
+    path: string,
+    profile: profile,
+    ping_status: string,
+    port_status: string,
+    ns_status: string,
+    run_status: string,
+    clean_status: string,
+    is_pinging: boolean,
+    is_port_checking: boolean,
+    is_setting_up: boolean,
+    is_running: boolean,
+    is_cleaning: boolean,
+}
+
+type namespace_info = {
+    name: string,
+    processes: string,
+}
+
 const form = reactive({
   name: "",
   ip: "",
   port: "",
   protocol: "",
   cmd: "",
-  dns: "",
-  namespace: "",
+  dns: "8.8.8.8",
+  namespace: "namespace",
   username: "",
   password: "",
-  tun_interface: "",
-  tun_ip: "",
-  veth_host: "",
-  veth_ns: "",
-  veth_host_ip: "",
-  veth_ns_ip: "",
+  tun_interface: `tun${Math.floor(Math.random() * 1000)}`,
+  tun_ip: `10.0.${Math.floor(Math.random() * 254)}.2`,
+  veth_host: "veth_host",
+  veth_ns: "veth_ns",
+  veth_host_ip: `10.200.${Math.floor(Math.random() * 254)}.1`,
+  veth_ns_ip: `10.200.${Math.floor(Math.random() * 254)}.2`,
 });
 
 const proxy_types = [
@@ -102,7 +84,18 @@ const proxy_types = [
   "reject"
 ];
 
-async function saveProfile() {
+// Save Profile
+async function save_profile() {
+  form_errors.name = !form.name;
+  form_errors.ip = !form.ip;
+  form_errors.port = !form.port;
+  form_errors.protocol = !form.protocol;
+
+  if (form_errors.name || form_errors.ip || form_errors.port || form_errors.protocol) {
+    save_status.value = "Missing mandatory fields";
+    return;
+  }
+
   save_status.value = "Saving...";
   try {
     const result = await invoke("save_profile", {
@@ -122,317 +115,324 @@ async function saveProfile() {
       vethNsIp: form.veth_ns_ip,
     });
     save_status.value = result as string;
-  } 
+    
+    if (save_status.value.includes("success") || !save_status.value.includes("Error")) {
+        show_modal.value = false;
+        save_status.value = "";
+        load_profiles();
+    }
+  }
   catch (error) {
     save_status.value = `Error: ${error}`;
   }
 }
 
-const name_placeholders = [
-  "_ (default)",
-  "Proxy1",
-  "Server SS Port",
-  "Server Sock5 Port",
-  "MyVPN",
-];
+// Profile List
+const profiles = ref<profile_entry[]>([]);
+const active_namespaces = ref<namespace_info[]>([]);
+const cmd = ref<string>("");
 
-const ip_placeholders = [
-  "192.168.1.1",
-  "fe80::xxxx:xxxx:xxxx:xxxx",
-];
-
-const port_placeholders = [
-  "8080",
-  "443",
-  "1088",
-];
-
-const dns_placeholders = [
-  "8.8.8.8 (default)",
-  "2001:4860:4860::8888",
-  "1.1.1.1",
-  "2606:4700:4700::1111",
-];
-
-const namespace_placeholders = [
-  "namespace (default)",
-  "default",
-  "custom_ns",
-  "proxyns"
-];
-
-const username_placeholders = [
-  "( ) (default)",
-  "user123",
-  "1001",
-  "rc4-md5",
-];
-
-const password_placeholders = [
-  "( ) (default)",
-];
-
-const tun_interface_placeholders = [
-  "tun0 (default)",
-];
-
-const tun_ip_placeholders = [
-  "10.0.0.2 (default)",
-];
-
-const veth_host_placeholders = [
-  "veth_host (default)",
-];
-
-const veth_ns_placeholders = [
-  "veth_ns (default)",
-];
-
-const veth_host_ip_placeholders = [
-  "10.200.1.1 (default)",
-];
-
-const veth_ns_ip_placeholders = [
-  "10.200.1.2 (default)",
-];
-
-const cmd_placeholders = [
-  "main.py",
-  "flatpak run org.mozilla.firefox",
-  "steam",
-];
-
-// Profile selection
-const profile_path = ref<string | null>(null);
-const selected_profile = ref<Profile | null>(null);
-
-async function select_profile() {
-  const app_data = await appDataDir();
-  const selected_path  = await open({
-    defaultPath: await join(app_data, "profiles"),
-    multiple: false,
-    filters: [{ name: "JSON", extensions: ["json"] }],
-  });
-
-  if (selected_path && typeof selected_path === "string") {
-    profile_path.value = selected_path;
-  }
-  try {
-    selected_profile.value = await invoke<Profile>(
-      "fetch_profile",
-      { profilePath: profile_path.value }
-    );
-  } 
-  catch (e) {
-    selected_profile.value = null;
-    console.error("Failed to load profile:", e);
-  }
+async function load_profiles() {
+    try {
+        const result = await invoke<profile_entry[]>("list_profiles");
+        profiles.value = result.map(p => ({
+            ...p,
+            ping_status: "Ping",
+            port_status: "Port",
+            ns_status: "Setup",
+            run_status: "Run",
+            clean_status: "Clean",
+            is_pinging: false,
+            is_port_checking: false,
+            is_setting_up: false,
+            is_running: false,
+            is_cleaning: false,
+        }));
+    } catch (e) {
+        console.error("Failed to list profiles", e);
+    }
 }
 
-// Namespace creating
-const ns_result = ref<string | null>(null);
-
-async function setup_namespace() {
-  try {
-    ns_result.value = await invoke("setup_namespace", {
-      profilePath: profile_path.value,
-    });
-  } 
-  catch (error) {
-    ns_result.value = `Error creating namespace: ${error}`;
-  }
+async function refresh_active_namespaces() {
+    try {
+        active_namespaces.value = await invoke<namespace_info[]>("get_active_namespaces");
+    } catch (e) {
+        console.error("Failed to get namespaces", e);
+    }
 }
 
-// Running
-const run_result = ref<string | null>(null);
-const cmd = ref<string | undefined>(undefined);
+// Refresh
+let refreshTimer: number | null = null;
+onMounted(() => {
+    load_profiles();
+    refresh_active_namespaces();
+    refreshTimer = window.setInterval(() => {
+        load_profiles();
+        refresh_active_namespaces();
+    }, 10000);
+});
 
-async function run() {
-  try {
-    run_result.value = await invoke("run", {
-      profilePath: profile_path.value,
-      cmd: cmd.value,
-    });
-  } 
-  catch (error) {
-    run_result.value = `Error running: ${error}`;
-  }
+onUnmounted(() => {
+    if (refreshTimer) clearInterval(refreshTimer);
+});
+
+// Ping
+async function ping_profile(index: number) {
+    const p = profiles.value[index];
+    p.is_pinging = true;
+    p.ping_status = "...";
+    try {
+        const res = await invoke<string>("ping", { ip: p.profile.ip });
+        p.ping_status = `${res}ms`;
+    } catch (e) {
+        p.ping_status = "No Response";
+    } finally {
+        p.is_pinging = false;
+    }
+}
+
+// Port
+async function port_check_profile(index: number) {
+    const p = profiles.value[index];
+    p.is_port_checking = true;
+    p.port_status = "...";
+    try {
+        const res = await invoke<string>("port", { ip: p.profile.ip, port: p.profile.port });
+        p.port_status = res;
+    } catch (e) {
+        p.port_status = "No Response";
+    } finally {
+        p.is_port_checking = false;
+    }
+}
+
+// Setup Namespace
+async function setup_ns_profile(index: number) {
+    const p = profiles.value[index];
+    p.is_setting_up = true;
+    p.ns_status = "Setting up...";
+    try {
+        await invoke("setup_namespace", { profilePath: p.path });
+        p.ns_status = "Ready";
+        refresh_active_namespaces();
+    } catch (e) {
+        p.ns_status = "Failed";
+        console.error(e);
+    } finally {
+        p.is_setting_up = false;
+    }
+}
+
+// Run
+async function run_profile(index: number) {
+    const p = profiles.value[index];
+    if(!cmd.value) {
+        alert("Please enter a command above");
+        return;
+    }
+    p.is_running = true;
+    p.run_status = "Launching...";
+    try {
+        await invoke("run", { profilePath: p.path, cmd: cmd.value });
+        p.run_status = "Sent";
+        refresh_active_namespaces();
+    } catch (e) {
+        p.run_status = "Err";
+    } finally {
+        setTimeout(() => { p.is_running = false; p.run_status = "Run Again"; }, 2000);
+    }
 }
 
 // Cleanup
-const cleanup_result = ref<string | null>(null);
-
-async function cleanup() {
-  try {
-    const app_data = await appDataDir();
-    const pid_file = await join(app_data, "pid.json");
-    cleanup_result.value = await invoke("cleanup", {
-      profilePath: profile_path.value,
-      pidPath: pid_file.toString(),
-    });
-  } 
-  catch (error) {
-    cleanup_result.value = `Error cleaning up: ${error}`;
-  }
+async function cleanup_profile(index: number) {
+    const p = profiles.value[index];
+    p.is_cleaning = true;
+    p.clean_status = "Cleaning...";
+    try {
+        await invoke("cleanup", { profilePath: p.path });
+        p.clean_status = "Cleaned";
+        refresh_active_namespaces();
+    } catch (e) {
+        console.error(e);
+    } finally {
+        p.is_cleaning = false;
+    }
 }
+
+const name_placeholders = ["Proxy1", "Server SS Port", "Server Sock5 Port", "MyVPN"];
+const ip_placeholders = ["192.168.1.1", "fe80::xxxx:xxxx:xxxx:xxxx"];
+const port_placeholders = ["8080", "443", "1088"];
+const dns_placeholders = ["8.8.8.8 (default)", "2001:4860:4860::8888", "1.1.1.1", "2606:4700:4700::1111"];
+const namespace_placeholders = ["namespace (default)", "default", "custom_ns", "proxyns"];
+const username_placeholders = ["( ) (default)", "user123", "1001", "rc4-md5"];
+const password_placeholders = ["( ) (default)"];
+const tun_interface_placeholders = ["tun0 (default)"];
+const tun_ip_placeholders = ["10.0.0.2 (default)"];
+const veth_host_placeholders = ["veth_host (default)"];
+const veth_ns_placeholders = ["veth_ns (default)"];
+const veth_host_ip_placeholders = ["10.200.1.1 (default)"];
+const veth_ns_ip_placeholders = ["10.200.1.2 (default)"];
+const cmd_placeholders = ["main.py", "flatpak run org.mozilla.firefox", "steam"];
+
 </script>
 
 <template>
   <main class="container">
-    
-    <a class="grid place-content-center p-5">
-      <img src="/vite.svg" class="logo vite" alt="Vite logo" />
-    </a>
-
-    <div class="grid place-content-center p-5">
-      <RippleButton @click="select_profile">1.Select profile config</RippleButton>
+    <div class="header">
+        <h2 class="title">Subspace Proxy</h2>
+        
+        <div class="cmd-bar">
+            <label>Command:</label>
+            <VanishingInput v-model="cmd" :placeholders="cmd_placeholders" />
+        </div>
     </div>
 
-    <p>{{ profile_path }}</p>
+    <div class="panel active-panel">
+        <h3>Active Namespaces</h3>
+        <div v-if="active_namespaces.length === 0" class="empty-state">No active namespaces found.</div>
+        <div v-else class="ns-grid-header">
+            <span>Namespace</span>
+            <span>Running Processes</span>
+        </div>
 
-    <div class="grid place-content-center p-5">
-      <RippleButton @click="setup_namespace" :disabled="!selected_profile">2.Setup Namespace</RippleButton>
+        <div v-for="ns in active_namespaces" :key="ns.name" class="ns-row">
+            <span class="ns-name">{{ ns.name }}</span>
+            <span class="ns-procs">{{ ns.processes || '(none)' }}</span>
+        </div>
     </div>
 
-    <p>{{ ns_result }}</p>
+    <div class="panel profiles-panel">
+        <div class="profiles-header">
+            <h3>Saved Profiles</h3>
+            <RippleButton @click="show_modal = true" class="sm-btn bg-blue-600">+ New</RippleButton>
+        </div>
 
-    <div class="form-group p-5">
-      <label>Command</label>
-      <VanishingInput v-model="cmd" :placeholders="cmd_placeholders" />
-    </div>
+        <div class="profile-list">
+            <div v-for="(p, index) in profiles" :key="p.filename" class="profile-card">
+                <div class="card-info">
+                    <span class="p-name">{{ p.filename }}</span>
+                    <span class="p-detail">{{ (p.profile.protocol || '').toUpperCase() }} : {{ p.profile.ip }}:{{ p.profile.port }}</span>
+                </div>
+                
+                <div class="card-actions">
+                    <RippleButton 
+                        @click="ping_profile(index)" 
+                        :disabled="p.is_pinging" 
+                        class="sm-btn action-btn"
+                        :class="{'button-good': p.ping_status.includes('ms'), 'button-bad': p.ping_status === 'Error'}"
+                    >
+                        {{ p.ping_status }}
+                    </RippleButton>
 
-    <div class="grid place-content-center p-5">
-      <RippleButton @click="run" :disabled="!selected_profile || !cmd"> 3.Run </RippleButton>
-    </div>
+                    <RippleButton 
+                        @click="port_check_profile(index)" 
+                        :disabled="p.is_port_checking" 
+                        class="sm-btn action-btn"
+                        :class="{'button-good': p.port_status === 'Open', 'button-bad': p.port_status === 'Error'}"
+                    >
+                        {{ p.port_status }}
+                    </RippleButton>
 
-    <p>{{ run_result }}</p>
+                    <RippleButton 
+                        @click="setup_ns_profile(index)" 
+                        :disabled="p.is_setting_up" 
+                        class="sm-btn action-btn bg-purple-600"
+                    >
+                        {{ p.ns_status }}
+                    </RippleButton>
 
-    <div class="grid place-content-center p-5">
-      <RippleButton @click="cleanup" :disabled="!selected_profile"> 4.Cleanup </RippleButton>
-    </div>
+                     <RippleButton 
+                        @click="run_profile(index)" 
+                        :disabled="p.is_running || !cmd" 
+                        class="sm-btn action-btn bg-green-600"
+                    >
+                        {{ p.run_status }}
+                    </RippleButton>
 
-    <p>{{ cleanup_result }}</p>
-    
-    <div class="grid place-content-center p-5">
-      <RippleButton @click="ping_server(selected_profile?.ip ?? '')" :disabled="is_pinging || !selected_profile?.ip"> Ping Server </RippleButton>
-    </div>
-
-    <p v-if="is_pinging">
-      Pinging{{ dots }}
-    </p>
-
-    <p v-else>
-      {{ ping }}
-    </p>
-
-    <div class="grid place-content-center p-5">
-      <RippleButton @click="show_modal = true" class="bg-blue-600"> + Create Profile </RippleButton>
+                    <RippleButton 
+                        @click="cleanup_profile(index)" 
+                        :disabled="p.is_cleaning" 
+                        class="sm-btn action-btn bg-red-600"
+                    >
+                        {{ p.clean_status }}
+                    </RippleButton>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div v-if="show_modal" class="modal-overlay">
       <div class="modal-content">
         <h2>New Proxy Profile</h2>
+        <div class="form-grid">
+            <div class="form-group">
+              <label :class="{'text-red-500': form_errors.name}">Name</label>
+              <VanishingInput v-model="form.name" :placeholders="name_placeholders" />
+            </div>
 
-        <div class="form-group p-5">
-          <label>Profile Name</label>
-          <VanishingInput v-model="form.name" :placeholders="name_placeholders" />
+            <div class="form-group">
+              <label :class="{'text-red-500': form_errors.ip}">IP</label>
+              <VanishingInput v-model="form.ip" :placeholders="ip_placeholders" />
+            </div>
+
+            <div class="form-group">
+              <label :class="{'text-red-500': form_errors.port}">Port</label>
+              <VanishingInput v-model="form.port" :placeholders="port_placeholders" />
+            </div>
+
+            <div class="form-group">
+              <label :class="{'text-red-500': form_errors.protocol}">Protocol</label>
+              <DropdownMenu>
+                <DropdownMenuTrigger class="w-full">
+                  <RippleButton type="button" class="w-full">
+                      {{ form.protocol ? form.protocol.toUpperCase() : 'Select Protocol' }}
+                  </RippleButton>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent class="z-[200] bg-white border border-gray-200 shadow-xl min-w-[200px]">
+                  <DropdownMenuItem 
+                      v-for="type in proxy_types" 
+                      :key="type" 
+                      @click="form.protocol = type"
+                      class="cursor-pointer hover:bg-gray-100 p-2"
+                  >
+                    {{ type.toUpperCase() }}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
         </div>
 
-          <div class="form-group p-5">
-            <label>IP Address</label>
-            <VanishingInput v-model="form.ip" :placeholders="ip_placeholders" />
-          </div>
-
-          <div class="form-group p-5">
-            <label>Port</label>
-            <VanishingInput v-model="form.port" :placeholders="port_placeholders" />
-          </div>
-
-        <DropdownMenu class="form-group p-10">
-          <DropdownMenuTrigger>
-            <RippleButton>
-              {{ form.protocol ? form.protocol.toUpperCase() : 'Protocol' }}
-            </RippleButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem v-for="type in proxy_types" :key="type" @click="form.protocol = type">
-              {{ type.toUpperCase() }}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
         <div class="grid place-content-center p-5">
-          <RippleButton @click="show_advanced_modal = true" class="bg-blue-600"> + Advanced Settings </RippleButton>
+            <RippleButton type="button" @click="show_advanced_modal = true" class="sm-btn">Advanced Settings (Optional)</RippleButton>
         </div>
 
         <div v-if="show_advanced_modal" class="modal-overlay">
           <div class="modal-content">
-            <h2>Advanced Settings</h2>
-
-            <div class="form-group p-5">
-              <label>DNS</label>
-              <VanishingInput v-model="form.dns" :placeholders="dns_placeholders" />
+            <h2>Advanced</h2>
+            <div class="scroll-form">
+                <div class="form-group"><label>DNS</label><VanishingInput v-model="form.dns" :placeholders="dns_placeholders" /></div>
+                <div class="form-group"><label>NS Name</label><VanishingInput v-model="form.namespace" :placeholders="namespace_placeholders" /></div>
+                <div class="form-group"><label>Username</label><VanishingInput v-model="form.username" :placeholders="username_placeholders" /></div>
+                <div class="form-group"><label>Password</label><VanishingInput v-model="form.password" :placeholders="password_placeholders" /></div>
+                <div class="form-group"><label>Tun</label><VanishingInput v-model="form.tun_interface" :placeholders="tun_interface_placeholders" /></div>
+                <div class="form-group"><label>Tun IP</label><VanishingInput v-model="form.tun_ip" :placeholders="tun_ip_placeholders" /></div>
+                <div class="form-group"><label>Veth Host</label><VanishingInput v-model="form.veth_host" :placeholders="veth_host_placeholders" /></div>
+                <div class="form-group"><label>Veth NS</label><VanishingInput v-model="form.veth_ns" :placeholders="veth_ns_placeholders" /></div>
+                <div class="form-group"><label>Host IP</label><VanishingInput v-model="form.veth_host_ip" :placeholders="veth_host_ip_placeholders" /></div>
+                <div class="form-group"><label>NS IP</label><VanishingInput v-model="form.veth_ns_ip" :placeholders="veth_ns_ip_placeholders" /></div>
             </div>
-
-            <div class="form-group p-5">
-              <label>Namespace Name</label>
-              <VanishingInput v-model="form.namespace" :placeholders="namespace_placeholders" />
-            </div>
-
-            <div class="form-group p-5">
-              <label>Username/UID/Method</label>
-              <VanishingInput v-model="form.username" :placeholders="username_placeholders" />
-            </div>
-
-            <div class="form-group p-5">
-              <label>Password</label>
-              <VanishingInput v-model="form.password" :placeholders="password_placeholders" />
-            </div>
-
-            <div class="form-group p-5">
-              <label>Tun Interface</label>
-              <VanishingInput v-model="form.tun_interface" :placeholders="tun_interface_placeholders" />
-            </div>
-
-            <div class="form-group p-5">
-              <label>Tun IP</label>
-              <VanishingInput v-model="form.tun_ip" :placeholders="tun_ip_placeholders" />
-            </div>
-
-            <div class="form-group p-5">
-              <label>Veth Host</label>
-              <VanishingInput v-model="form.veth_host" :placeholders="veth_host_placeholders" />
-            </div>
-
-            <div class="form-group p-5">
-              <label>Veth Namespace</label>
-              <VanishingInput v-model="form.veth_ns" :placeholders="veth_ns_placeholders" />
-            </div>
-
-            <div class="form-group p-5">
-              <label>Veth Host IP</label>
-              <VanishingInput v-model="form.veth_host_ip" :placeholders="veth_host_ip_placeholders" />
-            </div>
-
-            <div class="form-group p-5">
-              <label>Veth Namespace IP</label>
-              <VanishingInput v-model="form.veth_ns_ip" :placeholders="veth_ns_ip_placeholders" />
-            </div>
-
-            <div class="modal-actions grid place-content-center p-5">
-              <RippleButton @click="show_advanced_modal = false">Close Advanced</RippleButton>
-            </div>
-
+            
+            <RippleButton @click="show_advanced_modal = false">Close Advanced</RippleButton>
           </div>
         </div>
-
-        <div class="modal-actions grid place-content-center p-5">
-          <RippleButton @click="show_modal = false">Close</RippleButton>
-          <RippleButton @click="saveProfile">Save</RippleButton>
+        
+        <div class="modal-actions">
+          <RippleButton @click="show_modal = false" class="bg-red-600">Cancel</RippleButton>
+          <RippleButton @click="save_profile" class="bg-blue-600">Save</RippleButton>
+          <p>{{ save_status }}</p>
         </div>
-
-        <p>{{ save_status }}</p>
-
+      
       </div>
     </div>
   </main>
@@ -440,55 +440,136 @@ async function cleanup() {
 
 <style>
 :root {
-  font-family: Hack, Arial;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
+  font-family: Hack, Arial, sans-serif;
   color: #0f0f0f;
   background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
 }
 
 .container {
-  margin: 0;
-  padding-top: 10vh;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  gap: 2rem;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-  text-align: center;
+.title { 
+    text-align: center; margin-bottom: 1rem; 
 }
 
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
+.cmd-bar {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
-.row {
-  display: flex;
-  justify-content: center;
+.panel {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
+.profiles-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
 }
 
-a:hover {
-  color: #535bf2;
+.ns-grid-header {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    font-weight: bold;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #eee;
 }
 
+.ns-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.ns-name { 
+    font-weight: 600; color: #2563eb; 
+}
+
+.ns-procs { 
+    font-size: 0.9em; color: #555; 
+}
+
+.profile-list { 
+    display: flex; flex-direction: column; gap: 1rem; 
+}
+
+.profile-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fafafa;
+    padding: 1rem;
+    border: 1px solid #eee;
+    border-radius: 6px;
+}
+
+.card-info { display: flex; flex-direction: column; text-align: left; }
+.p-name { font-weight: bold; font-size: 1.1em; }
+.p-detail { font-size: 0.85em; color: #666; }
+
+.card-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+.sm-btn {
+    padding: 0.4rem 0.8rem !important;
+    font-size: 0.85rem !important;
+    min-width: 80px;
+}
+
+.button-good { 
+    background-color: #dcfce7 !important; color: #166534 !important; 
+}
+
+.button-bad { 
+    background-color: #fee2e2 !important; color: #991b1b !important; 
+}
+
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 100;
+}
+
+.modal-content {
+  background: white; padding: 2rem; border-radius: 8px;
+  width: 500px; max-width: 90%;
+  max-height: 90vh; overflow-y: auto;
+}
+
+.text-red-500 { 
+    color: #ef4444 !important; 
+}
+
+.form-grid { 
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; 
+}
+
+.form-group { 
+    margin-bottom: 1rem; text-align: left; 
+}
+
+.form-group label { 
+    display: block; font-size: 0.8em; margin-bottom: 0.3rem; color: #666; 
+}
+
+.modal-actions { 
+    display: flex; justify-content: center; gap: 1rem; 
+}
+
+.scroll-form { 
+    max-height: 60vh; overflow-y: auto; padding-right: 10px; 
+}
 </style>
