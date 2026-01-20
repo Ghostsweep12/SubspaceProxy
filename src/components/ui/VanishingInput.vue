@@ -83,7 +83,7 @@ onBeforeUnmount(() => {
       v-model="vanishingText"
       :disabled="animating"
       type="text"
-      class="relative z-50 size-full rounded-full border-none bg-transparent pr-20 pl-4 text-sm text-black focus:ring-0 focus:outline-none sm:pl-10 sm:text-base dark:text-white"
+      class="relative z-50 size-full rounded-full border-none bg-transparent pr-10 pl-4 text-sm text-black focus:ring-0 focus:outline-none sm:pl-10 sm:text-base dark:text-white"
       :class="{ 'text-transparent dark:text-transparent': animating }"
     />
 

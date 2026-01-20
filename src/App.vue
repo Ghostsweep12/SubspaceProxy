@@ -17,6 +17,7 @@ import { ref, reactive, onMounted, onUnmounted } from "vue";
 const show_modal = ref(false);
 const show_advanced_modal = ref(false);
 const save_status = ref("");
+const editing_path = ref<string | null>(null);
 const form_errors = reactive({ name: false, ip: false, port: false, protocol: false });
 
 type profile = {
@@ -66,12 +67,12 @@ const form = reactive({
   namespace: "namespace",
   username: "",
   password: "",
-  tun_interface: `tun${Math.floor(Math.random() * 1000)}`,
-  tun_ip: `10.0.${Math.floor(Math.random() * 254)}.2`,
+  tun_interface: "",
+  tun_ip: "",
   veth_host: "veth_host",
   veth_ns: "veth_ns",
-  veth_host_ip: `10.200.${Math.floor(Math.random() * 254)}.1`,
-  veth_ns_ip: `10.200.${Math.floor(Math.random() * 254)}.2`,
+  veth_host_ip: "",
+  veth_ns_ip: "",
 });
 
 const proxy_types = [
@@ -83,6 +84,71 @@ const proxy_types = [
   "direct",
   "reject"
 ];
+
+// Random number for interfaces
+function apply_random_network_values() {
+  const r = Math.floor(Math.random() * 253) + 1;
+  const r2 = Math.floor(Math.random() * 253) + 1;
+
+  form.tun_interface = `tun${r}`;
+  form.tun_ip = `10.${r}.${r2}.2`;
+  form.veth_host_ip = `10.200.${r}.1`;
+  form.veth_ns_ip = `10.200.${r}.2`;
+}
+
+// New profile
+function new_profile() {
+  reset_form();
+  apply_random_network_values();
+  editing_path.value = null;
+  show_modal.value = true;
+}
+
+// Edit Profile
+function edit_profile(index: number) {
+    const p = profiles.value[index];
+    
+    form.name = p.filename.replace(/_/g, " ");
+    form.ip = p.profile.ip || "";
+    form.port = p.profile.port || "";
+    form.protocol = p.profile.protocol || "";
+    form.dns = p.profile.dns || "8.8.8.8";
+    form.namespace = p.profile.namespace || "namespace";
+    form.username = p.profile.username || "";
+    form.password = p.profile.password || "";
+    form.tun_interface = p.profile.tun_interface || "";
+    form.tun_ip = p.profile.tun_ip || "";
+    form.veth_host = p.profile.veth_host || "veth_host";
+    form.veth_ns = p.profile.veth_ns || "veth_ns";
+    form.veth_host_ip = p.profile.veth_host_ip || "";
+    form.veth_ns_ip = p.profile.veth_ns_ip || "";
+
+    editing_path.value = p.path;
+    show_modal.value = true;
+}
+
+// Delete Profile
+async function delete_profile_confirm(index: number) {
+    const p = profiles.value[index];
+    if(await confirm(`Are you sure you want to delete profile "${p.filename}"?`)) {
+        try {
+            await invoke("delete_profile", { path: p.path });
+            load_profiles();
+        } catch(e) {
+            alert("Failed to delete: " + e);
+        }
+    }
+}
+
+// Reset Form
+function reset_form() {
+    form.name = "";
+    form.ip = "";
+    form.port = "";
+    form.protocol = "";
+    form.username = "";
+    form.password = "";
+}
 
 // Save Profile
 async function save_profile() {
@@ -114,16 +180,27 @@ async function save_profile() {
       vethHostIp: form.veth_host_ip,
       vethNsIp: form.veth_ns_ip,
     });
+    
+    if (editing_path.value) {
+         const new_filename = form.name.replace(/ /g, "_") + ".json";
+         const old_filename = editing_path.value.split(/[\\/]/).pop();
+         
+         if (old_filename !== new_filename) {
+             await invoke("delete_profile", { path: editing_path.value });
+         }
+    }
+
     save_status.value = result as string;
     
     if (save_status.value.includes("success") || !save_status.value.includes("Error")) {
         show_modal.value = false;
         save_status.value = "";
+        editing_path.value = null;
         load_profiles();
     }
   }
-  catch (error) {
-    save_status.value = `Error: ${error}`;
+  catch (e) {
+    save_status.value = "Error: " + e;
   }
 }
 
@@ -149,7 +226,7 @@ async function load_profiles() {
             is_cleaning: false,
         }));
     } catch (e) {
-        console.error("Failed to list profiles", e);
+        alert("Failed to list profiles: " + e);
     }
 }
 
@@ -157,7 +234,7 @@ async function refresh_active_namespaces() {
     try {
         active_namespaces.value = await invoke<namespace_info[]>("get_active_namespaces");
     } catch (e) {
-        console.error("Failed to get namespaces", e);
+        alert("Failed to get namespaces: " + e);
     }
 }
 
@@ -185,7 +262,7 @@ async function ping_profile(index: number) {
         const res = await invoke<string>("ping", { ip: p.profile.ip });
         p.ping_status = `${res}ms`;
     } catch (e) {
-        p.ping_status = "No Response";
+        p.ping_status = "No Response: " + e;
     } finally {
         p.is_pinging = false;
     }
@@ -200,7 +277,7 @@ async function port_check_profile(index: number) {
         const res = await invoke<string>("port", { ip: p.profile.ip, port: p.profile.port });
         p.port_status = res;
     } catch (e) {
-        p.port_status = "No Response";
+        p.port_status = "No Response: " + e;
     } finally {
         p.is_port_checking = false;
     }
@@ -216,8 +293,7 @@ async function setup_ns_profile(index: number) {
         p.ns_status = "Ready";
         refresh_active_namespaces();
     } catch (e) {
-        p.ns_status = "Failed";
-        console.error(e);
+        p.ns_status = "Failed: " + e;
     } finally {
         p.is_setting_up = false;
     }
@@ -237,7 +313,7 @@ async function run_profile(index: number) {
         p.run_status = "Sent";
         refresh_active_namespaces();
     } catch (e) {
-        p.run_status = "Err";
+        p.run_status = "Error: " + e;
     } finally {
         setTimeout(() => { p.is_running = false; p.run_status = "Run Again"; }, 2000);
     }
@@ -253,12 +329,13 @@ async function cleanup_profile(index: number) {
         p.clean_status = "Cleaned";
         refresh_active_namespaces();
     } catch (e) {
-        console.error(e);
+        p.clean_status = "Error: " + e;
     } finally {
         p.is_cleaning = false;
     }
 }
 
+// Placeholder animation
 const name_placeholders = ["Proxy1", "Server SS Port", "Server Sock5 Port", "MyVPN"];
 const ip_placeholders = ["192.168.1.1", "fe80::xxxx:xxxx:xxxx:xxxx"];
 const port_placeholders = ["8080", "443", "1088"];
@@ -304,7 +381,7 @@ const cmd_placeholders = ["main.py", "flatpak run org.mozilla.firefox", "steam"]
     <div class="panel profiles-panel">
         <div class="profiles-header">
             <h3>Saved Profiles</h3>
-            <RippleButton @click="show_modal = true" class="sm-btn bg-blue-600">+ New</RippleButton>
+            <RippleButton @click="new_profile()" class="sm-btn bg-blue-600 text-white">+ New</RippleButton>
         </div>
 
         <div class="profile-list">
@@ -315,6 +392,24 @@ const cmd_placeholders = ["main.py", "flatpak run org.mozilla.firefox", "steam"]
                 </div>
                 
                 <div class="card-actions">
+                    <div class="manage-group">
+                        <RippleButton 
+                            @click="edit_profile(index)" 
+                            class="sm-btn bg-amber-500 text-white"
+                        >
+                            Edit
+                        </RippleButton>
+
+                        <RippleButton 
+                            @click="delete_profile_confirm(index)" 
+                            class="sm-btn bg-red-600 text-white"
+                        >
+                            Delete
+                        </RippleButton>
+                    </div>
+
+                    <div class="separator"></div>
+
                     <RippleButton 
                         @click="ping_profile(index)" 
                         :disabled="p.is_pinging" 
@@ -363,7 +458,7 @@ const cmd_placeholders = ["main.py", "flatpak run org.mozilla.firefox", "steam"]
 
     <div v-if="show_modal" class="modal-overlay">
       <div class="modal-content">
-        <h2>New Proxy Profile</h2>
+        <h2>{{ editing_path ? 'Edit Profile' : 'New Proxy Profile' }}</h2>
         <div class="form-grid">
             <div class="form-group">
               <label :class="{'text-red-500': form_errors.name}">Name</label>
@@ -516,11 +611,21 @@ const cmd_placeholders = ["main.py", "flatpak run org.mozilla.firefox", "steam"]
     border-radius: 6px;
 }
 
-.card-info { display: flex; flex-direction: column; text-align: left; }
-.p-name { font-weight: bold; font-size: 1.1em; }
-.p-detail { font-size: 0.85em; color: #666; }
+.card-info { 
+    display: flex; 
+    flex-direction: column; 
+    text-align: left; 
+}
 
-.card-actions { display: flex; gap: 0.5rem; align-items: center; }
+.p-name { 
+    font-weight: bold; 
+    font-size: 1.1em; 
+}
+
+.p-detail { 
+    font-size: 0.85em; 
+    color: #666; 
+}
 
 .sm-btn {
     padding: 0.4rem 0.8rem !important;
@@ -571,5 +676,28 @@ const cmd_placeholders = ["main.py", "flatpak run org.mozilla.firefox", "steam"]
 
 .scroll-form { 
     max-height: 60vh; overflow-y: auto; padding-right: 10px; 
+}
+
+.manage-group {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.separator {
+    width: 1px;
+    height: 25px;
+    background-color: #ddd;
+    margin: 0 0.5rem;
+}
+
+.bg-amber-500 { background-color: #f59e0b !important; color: white; }
+.text-white { color: white !important; }
+
+.card-actions { 
+    display: flex; 
+    gap: 0.5rem; 
+    align-items: center; 
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 </style>

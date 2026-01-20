@@ -290,6 +290,12 @@ pub async fn save_profile(
 }
 
 #[tauri::command]
+pub async fn delete_profile(path: String) -> Result<String, String> {
+    std::fs::remove_file(&path).map_err(|e| format!("Failed to delete profile: {}", e))?;
+    Ok(format!("Profile deleted"))
+}
+
+#[tauri::command]
 pub async fn fetch_profile(profile_path: String) -> Result<Profile, String> {
     let profile = std::fs::read_to_string(profile_path).map_err(|e| format!("Failed to read profile file: {}", e))?;
     let profile_data: Profile = serde_json::from_str(&profile).map_err(|e| format!("Failed to parse profile JSON: {}", e))?;
