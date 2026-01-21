@@ -3,50 +3,52 @@ import type { HTMLAttributes } from "vue";
 import { ref, watchEffect } from "vue";
 
 interface RippleButtonProps {
-  class?: HTMLAttributes["class"];
-  rippleColor?: string;
-  duration?: number;
-  disabled?: boolean;
+	class?: HTMLAttributes["class"];
+	rippleColor?: string;
+	duration?: number;
+	disabled?: boolean;
 }
 
 const props = withDefaults(defineProps<RippleButtonProps>(), {
-  rippleColor: "#ADD8E6",
-  duration: 600,
+	rippleColor: "#ADD8E6",
+	duration: 600,
 });
 
-const emit = defineEmits<{
-  (e: "click", event: MouseEvent): void;
-}>();
+const emit = defineEmits<(e: "click", event: MouseEvent) => void>();
 
 const rippleButtonRef = ref<HTMLButtonElement | null>(null);
-const buttonRipples = ref<Array<{ x: number; y: number; size: number; key: number }>>([]);
+const buttonRipples = ref<
+	Array<{ x: number; y: number; size: number; key: number }>
+>([]);
 
 function handleClick(event: MouseEvent) {
-  if (props.disabled) return;
-  createRipple(event);
-  emit("click", event);
+	if (props.disabled) return;
+	createRipple(event);
+	emit("click", event);
 }
 
 function createRipple(event: MouseEvent) {
-  const button = rippleButtonRef.value;
-  if (!button) return;
+	const button = rippleButtonRef.value;
+	if (!button) return;
 
-  const rect = button.getBoundingClientRect();
-  const size = Math.max(rect.width, rect.height);
-  const x = event.clientX - rect.left - size / 2;
-  const y = event.clientY - rect.top - size / 2;
+	const rect = button.getBoundingClientRect();
+	const size = Math.max(rect.width, rect.height);
+	const x = event.clientX - rect.left - size / 2;
+	const y = event.clientY - rect.top - size / 2;
 
-  const newRipple = { x, y, size, key: Date.now() };
-  buttonRipples.value.push(newRipple);
+	const newRipple = { x, y, size, key: Date.now() };
+	buttonRipples.value.push(newRipple);
 }
 
 watchEffect(() => {
-  if (buttonRipples.value.length > 0) {
-    const lastRipple = buttonRipples.value[buttonRipples.value.length - 1];
-    setTimeout(() => {
-      buttonRipples.value = buttonRipples.value.filter((ripple) => ripple.key !== lastRipple.key);
-    }, props.duration);
-  }
+	if (buttonRipples.value.length > 0) {
+		const lastRipple = buttonRipples.value[buttonRipples.value.length - 1];
+		setTimeout(() => {
+			buttonRipples.value = buttonRipples.value.filter(
+				(ripple) => ripple.key !== lastRipple.key,
+			);
+		}, props.duration);
+	}
 });
 </script>
 

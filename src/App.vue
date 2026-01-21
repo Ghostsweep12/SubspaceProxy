@@ -1,207 +1,221 @@
 <script setup lang="ts">
 // UI imports
-import RippleButton from "@/components/ui/RippleButton.vue";
-import VanishingInput from "@/components/ui/VanishingInput.vue";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 
 // Library imports
 import { invoke } from "@tauri-apps/api/core";
-import { ref, reactive, onMounted, onUnmounted } from "vue";
+import { onMounted, onUnmounted, reactive, ref } from "vue";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import RippleButton from "@/components/ui/RippleButton.vue";
+import VanishingInput from "@/components/ui/VanishingInput.vue";
 
 // Profile making
 const show_modal = ref(false);
 const show_advanced_modal = ref(false);
 const save_status = ref("");
 const editing_path = ref<string | null>(null);
-const form_errors = reactive({ name: false, ip: false, port: false, protocol: false });
+const form_errors = reactive({
+	name: false,
+	ip: false,
+	port: false,
+	protocol: false,
+});
 
 type profile = {
-    ip?: string,
-    port?: string,
-    protocol?: string,
-    namespace?: string,
-    username?: string,
-    password?: string,
-    tun_interface?: string,
-    tun_ip?: string,
-    veth_host?: string,
-    veth_ns?: string,
-    veth_host_ip?: string,
-    veth_ns_ip?: string,
-    dns?: string,
-}
+	ip?: string;
+	port?: string;
+	protocol?: string;
+	namespace?: string;
+	username?: string;
+	password?: string;
+	tun_interface?: string;
+	tun_ip?: string;
+	veth_host?: string;
+	veth_ns?: string;
+	veth_host_ip?: string;
+	veth_ns_ip?: string;
+	dns?: string;
+};
 
 type profile_entry = {
-    filename: string,
-    path: string,
-    profile: profile,
-    ping_status: string,
-    port_status: string,
-    ns_status: string,
-    run_status: string,
-    clean_status: string,
-    is_pinging: boolean,
-    is_port_checking: boolean,
-    is_setting_up: boolean,
-    is_running: boolean,
-    is_cleaning: boolean,
-}
+	filename: string;
+	path: string;
+	profile: profile;
+	ping_status: string;
+	port_status: string;
+	ns_status: string;
+	run_status: string;
+	clean_status: string;
+	is_pinging: boolean;
+	is_port_checking: boolean;
+	is_setting_up: boolean;
+	is_running: boolean;
+	is_cleaning: boolean;
+};
 
 type namespace_info = {
-    name: string,
-    processes: string,
-}
+	name: string;
+	processes: string;
+};
 
 const form = reactive({
-  name: "",
-  ip: "",
-  port: "",
-  protocol: "",
-  cmd: "",
-  dns: "8.8.8.8",
-  namespace: "namespace",
-  username: "",
-  password: "",
-  tun_interface: "",
-  tun_ip: "",
-  veth_host: "veth_host",
-  veth_ns: "veth_ns",
-  veth_host_ip: "",
-  veth_ns_ip: "",
+	name: "",
+	ip: "",
+	port: "",
+	protocol: "",
+	cmd: "",
+	dns: "8.8.8.8",
+	namespace: "namespace",
+	username: "",
+	password: "",
+	tun_interface: "",
+	tun_ip: "",
+	veth_host: "veth_host",
+	veth_ns: "veth_ns",
+	veth_host_ip: "",
+	veth_ns_ip: "",
 });
 
 const proxy_types = [
-  "socks5",
-  "socks4",
-  "http",
-  "shadowsocks",
-  "relay",
-  "direct",
-  "reject"
+	"socks5",
+	"socks4",
+	"http",
+	"shadowsocks",
+	"relay",
+	"direct",
+	"reject",
 ];
 
 // Random number for interfaces
 function apply_random_network_values() {
-  const r = Math.floor(Math.random() * 253) + 1;
-  const r2 = Math.floor(Math.random() * 253) + 1;
+	const r = Math.floor(Math.random() * 253) + 1;
+	const r2 = Math.floor(Math.random() * 253) + 1;
 
-  form.tun_interface = `tun${r}`;
-  form.tun_ip = `10.${r}.${r2}.2`;
-  form.veth_host_ip = `10.200.${r}.1`;
-  form.veth_ns_ip = `10.200.${r}.2`;
+	form.tun_interface = `tun${r}`;
+	form.tun_ip = `10.${r}.${r2}.2`;
+	form.veth_host_ip = `10.200.${r}.1`;
+	form.veth_ns_ip = `10.200.${r}.2`;
 }
 
 // New profile
 function new_profile() {
-  reset_form();
-  apply_random_network_values();
-  editing_path.value = null;
-  show_modal.value = true;
+	reset_form();
+	apply_random_network_values();
+	editing_path.value = null;
+	show_modal.value = true;
 }
 
 // Edit Profile
 function edit_profile(index: number) {
-    const p = profiles.value[index];
-    
-    form.name = p.filename.replace(/_/g, " ");
-    form.ip = p.profile.ip || "";
-    form.port = p.profile.port || "";
-    form.protocol = p.profile.protocol || "";
-    form.dns = p.profile.dns || "8.8.8.8";
-    form.namespace = p.profile.namespace || "namespace";
-    form.username = p.profile.username || "";
-    form.password = p.profile.password || "";
-    form.tun_interface = p.profile.tun_interface || "";
-    form.tun_ip = p.profile.tun_ip || "";
-    form.veth_host = p.profile.veth_host || "veth_host";
-    form.veth_ns = p.profile.veth_ns || "veth_ns";
-    form.veth_host_ip = p.profile.veth_host_ip || "";
-    form.veth_ns_ip = p.profile.veth_ns_ip || "";
+	const p = profiles.value[index];
 
-    editing_path.value = p.path;
-    show_modal.value = true;
+	form.name = p.filename.replace(/_/g, " ");
+	form.ip = p.profile.ip || "";
+	form.port = p.profile.port || "";
+	form.protocol = p.profile.protocol || "";
+	form.dns = p.profile.dns || "8.8.8.8";
+	form.namespace = p.profile.namespace || "namespace";
+	form.username = p.profile.username || "";
+	form.password = p.profile.password || "";
+	form.tun_interface = p.profile.tun_interface || "";
+	form.tun_ip = p.profile.tun_ip || "";
+	form.veth_host = p.profile.veth_host || "veth_host";
+	form.veth_ns = p.profile.veth_ns || "veth_ns";
+	form.veth_host_ip = p.profile.veth_host_ip || "";
+	form.veth_ns_ip = p.profile.veth_ns_ip || "";
+
+	editing_path.value = p.path;
+	show_modal.value = true;
 }
 
 // Delete Profile
 async function delete_profile_confirm(index: number) {
-    const p = profiles.value[index];
-    if(await confirm(`Are you sure you want to delete profile "${p.filename}"?`)) {
-        try {
-            await invoke("delete_profile", { path: p.path });
-            load_profiles();
-        } catch(e) {
-            alert("Failed to delete: " + e);
-        }
-    }
+	const p = profiles.value[index];
+	if (
+		await confirm(`Are you sure you want to delete profile "${p.filename}"?`)
+	) {
+		try {
+			await invoke("delete_profile", { path: p.path });
+			load_profiles();
+		} catch (e) {
+			alert("Failed to delete: " + e);
+		}
+	}
 }
 
 // Reset Form
 function reset_form() {
-    form.name = "";
-    form.ip = "";
-    form.port = "";
-    form.protocol = "";
-    form.username = "";
-    form.password = "";
+	form.name = "";
+	form.ip = "";
+	form.port = "";
+	form.protocol = "";
+	form.username = "";
+	form.password = "";
 }
 
 // Save Profile
 async function save_profile() {
-  form_errors.name = !form.name;
-  form_errors.ip = !form.ip;
-  form_errors.port = !form.port;
-  form_errors.protocol = !form.protocol;
+	form_errors.name = !form.name;
+	form_errors.ip = !form.ip;
+	form_errors.port = !form.port;
+	form_errors.protocol = !form.protocol;
 
-  if (form_errors.name || form_errors.ip || form_errors.port || form_errors.protocol) {
-    save_status.value = "Missing mandatory fields";
-    return;
-  }
+	if (
+		form_errors.name ||
+		form_errors.ip ||
+		form_errors.port ||
+		form_errors.protocol
+	) {
+		save_status.value = "Missing mandatory fields";
+		return;
+	}
 
-  save_status.value = "Saving...";
-  try {
-    const result = await invoke("save_profile", {
-      name: form.name,
-      ip: form.ip,
-      port: form.port,
-      protocol: form.protocol,
-      dns: form.dns,
-      namespace: form.namespace,
-      username: form.username,
-      password: form.password,
-      tunInterface: form.tun_interface,
-      tunIp: form.tun_ip,
-      vethHost: form.veth_host,
-      vethNs: form.veth_ns,
-      vethHostIp: form.veth_host_ip,
-      vethNsIp: form.veth_ns_ip,
-    });
-    
-    if (editing_path.value) {
-         const new_filename = form.name.replace(/ /g, "_") + ".json";
-         const old_filename = editing_path.value.split(/[\\/]/).pop();
-         
-         if (old_filename !== new_filename) {
-             await invoke("delete_profile", { path: editing_path.value });
-         }
-    }
+	save_status.value = "Saving...";
+	try {
+		const result = await invoke("save_profile", {
+			name: form.name,
+			ip: form.ip,
+			port: form.port,
+			protocol: form.protocol,
+			dns: form.dns,
+			namespace: form.namespace,
+			username: form.username,
+			password: form.password,
+			tunInterface: form.tun_interface,
+			tunIp: form.tun_ip,
+			vethHost: form.veth_host,
+			vethNs: form.veth_ns,
+			vethHostIp: form.veth_host_ip,
+			vethNsIp: form.veth_ns_ip,
+		});
 
-    save_status.value = result as string;
-    
-    if (save_status.value.includes("success") || !save_status.value.includes("Error")) {
-        show_modal.value = false;
-        save_status.value = "";
-        editing_path.value = null;
-        load_profiles();
-    }
-  }
-  catch (e) {
-    save_status.value = "Error: " + e;
-  }
+		if (editing_path.value) {
+			const new_filename = form.name.replace(/ /g, "_") + ".json";
+			const old_filename = editing_path.value.split(/[\\/]/).pop();
+
+			if (old_filename !== new_filename) {
+				await invoke("delete_profile", { path: editing_path.value });
+			}
+		}
+
+		save_status.value = result as string;
+
+		if (
+			save_status.value.includes("success") ||
+			!save_status.value.includes("Error")
+		) {
+			show_modal.value = false;
+			save_status.value = "";
+			editing_path.value = null;
+			load_profiles();
+		}
+	} catch (e) {
+		save_status.value = "Error: " + e;
+	}
 }
 
 // Profile List
@@ -210,137 +224,160 @@ const active_namespaces = ref<namespace_info[]>([]);
 const cmd = ref<string>("");
 
 async function load_profiles() {
-    try {
-        const result = await invoke<profile_entry[]>("list_profiles");
-        profiles.value = result.map(p => ({
-            ...p,
-            ping_status: "Ping",
-            port_status: "Port",
-            ns_status: "Setup",
-            run_status: "Run",
-            clean_status: "Clean",
-            is_pinging: false,
-            is_port_checking: false,
-            is_setting_up: false,
-            is_running: false,
-            is_cleaning: false,
-        }));
-    } catch (e) {
-        alert("Failed to list profiles: " + e);
-    }
+	try {
+		const result = await invoke<profile_entry[]>("list_profiles");
+		profiles.value = result.map((p) => ({
+			...p,
+			ping_status: "Ping",
+			port_status: "Port",
+			ns_status: "Setup",
+			run_status: "Run",
+			clean_status: "Clean",
+			is_pinging: false,
+			is_port_checking: false,
+			is_setting_up: false,
+			is_running: false,
+			is_cleaning: false,
+		}));
+	} catch (e) {
+		alert("Failed to list profiles: " + e);
+	}
 }
 
 async function refresh_active_namespaces() {
-    try {
-        active_namespaces.value = await invoke<namespace_info[]>("get_active_namespaces");
-    } catch (e) {
-        alert("Failed to get namespaces: " + e);
-    }
+	try {
+		active_namespaces.value = await invoke<namespace_info[]>(
+			"get_active_namespaces",
+		);
+	} catch (e) {
+		alert("Failed to get namespaces: " + e);
+	}
 }
 
 // Refresh
 let refreshTimer: number | null = null;
 onMounted(() => {
-    load_profiles();
-    refresh_active_namespaces();
-    refreshTimer = window.setInterval(() => {
-        load_profiles();
-        refresh_active_namespaces();
-    }, 10000);
+	load_profiles();
+	refresh_active_namespaces();
+	refreshTimer = window.setInterval(() => {
+		load_profiles();
+		refresh_active_namespaces();
+	}, 10000);
 });
 
 onUnmounted(() => {
-    if (refreshTimer) clearInterval(refreshTimer);
+	if (refreshTimer) clearInterval(refreshTimer);
 });
 
 // Ping
 async function ping_profile(index: number) {
-    const p = profiles.value[index];
-    p.is_pinging = true;
-    p.ping_status = "...";
-    try {
-        const res = await invoke<string>("ping", { ip: p.profile.ip });
-        p.ping_status = `${res}ms`;
-    } catch (e) {
-        p.ping_status = "No Response: " + e;
-    } finally {
-        p.is_pinging = false;
-    }
+	const p = profiles.value[index];
+	p.is_pinging = true;
+	p.ping_status = "...";
+	try {
+		const res = await invoke<string>("ping", { ip: p.profile.ip });
+		p.ping_status = `${res}ms`;
+	} catch (e) {
+		p.ping_status = "No Response: " + e;
+	} finally {
+		p.is_pinging = false;
+	}
 }
 
 // Port
 async function port_check_profile(index: number) {
-    const p = profiles.value[index];
-    p.is_port_checking = true;
-    p.port_status = "...";
-    try {
-        const res = await invoke<string>("port", { ip: p.profile.ip, port: p.profile.port });
-        p.port_status = res;
-    } catch (e) {
-        p.port_status = "No Response: " + e;
-    } finally {
-        p.is_port_checking = false;
-    }
+	const p = profiles.value[index];
+	p.is_port_checking = true;
+	p.port_status = "...";
+	try {
+		const res = await invoke<string>("port", {
+			ip: p.profile.ip,
+			port: p.profile.port,
+		});
+		p.port_status = res;
+	} catch (e) {
+		p.port_status = "No Response: " + e;
+	} finally {
+		p.is_port_checking = false;
+	}
 }
 
 // Setup Namespace
 async function setup_ns_profile(index: number) {
-    const p = profiles.value[index];
-    p.is_setting_up = true;
-    p.ns_status = "Setting up...";
-    try {
-        await invoke("setup_namespace", { profilePath: p.path });
-        p.ns_status = "Ready";
-        refresh_active_namespaces();
-    } catch (e) {
-        p.ns_status = "Failed: " + e;
-    } finally {
-        p.is_setting_up = false;
-    }
+	const p = profiles.value[index];
+	p.is_setting_up = true;
+	p.ns_status = "Setting up...";
+	try {
+		await invoke("setup_namespace", { profilePath: p.path });
+		p.ns_status = "Ready";
+		refresh_active_namespaces();
+	} catch (e) {
+		p.ns_status = "Failed: " + e;
+	} finally {
+		p.is_setting_up = false;
+	}
 }
 
 // Run
 async function run_profile(index: number) {
-    const p = profiles.value[index];
-    if(!cmd.value) {
-        alert("Please enter a command above");
-        return;
-    }
-    p.is_running = true;
-    p.run_status = "Launching...";
-    try {
-        await invoke("run", { profilePath: p.path, cmd: cmd.value });
-        p.run_status = "Sent";
-        refresh_active_namespaces();
-    } catch (e) {
-        p.run_status = "Error: " + e;
-    } finally {
-        setTimeout(() => { p.is_running = false; p.run_status = "Run Again"; }, 2000);
-    }
+	const p = profiles.value[index];
+	if (!cmd.value) {
+		alert("Please enter a command above");
+		return;
+	}
+	p.is_running = true;
+	p.run_status = "Launching...";
+	try {
+		await invoke("run", { profilePath: p.path, cmd: cmd.value });
+		p.run_status = "Sent";
+		refresh_active_namespaces();
+	} catch (e) {
+		p.run_status = "Error: " + e;
+	} finally {
+		setTimeout(() => {
+			p.is_running = false;
+			p.run_status = "Run Again";
+		}, 2000);
+	}
 }
 
 // Cleanup
 async function cleanup_profile(index: number) {
-    const p = profiles.value[index];
-    p.is_cleaning = true;
-    p.clean_status = "Cleaning...";
-    try {
-        await invoke("cleanup", { profilePath: p.path });
-        p.clean_status = "Cleaned";
-        refresh_active_namespaces();
-    } catch (e) {
-        p.clean_status = "Error: " + e;
-    } finally {
-        p.is_cleaning = false;
-    }
+	const p = profiles.value[index];
+	p.is_cleaning = true;
+	p.clean_status = "Cleaning...";
+	try {
+		await invoke("cleanup", { profilePath: p.path });
+		p.clean_status = "Cleaned";
+		refresh_active_namespaces();
+	} catch (e) {
+		p.clean_status = "Error: " + e;
+	} finally {
+		p.is_cleaning = false;
+	}
 }
 
 // Placeholder animation
-const name_placeholders = ["Proxy1", "Server SS Port", "Server Sock5 Port", "MyVPN"];
+const name_placeholders = [
+	"Proxy1",
+	"Server SS Port",
+	"Server Sock5 Port",
+	"MyVPN",
+];
 const ip_placeholders = ["192.168.1.1", "fe80::xxxx:xxxx:xxxx:xxxx"];
 const port_placeholders = ["8080", "443", "1088"];
-const dns_placeholders = ["8.8.8.8 (default)", "2001:4860:4860::8888", "1.1.1.1", "2606:4700:4700::1111"];
-const namespace_placeholders = ["namespace (default)", "default", "custom_ns", "proxyns"];
+const dns_placeholders = [
+	"8.8.8.8 (default)",
+	"2001:4860:4860::8888",
+	"1.1.1.1",
+	"2606:4700:4700::1111",
+];
+const namespace_placeholders = [
+	"namespace (default)",
+	"default",
+	"custom_ns",
+	"proxyns",
+];
 const username_placeholders = ["( ) (default)", "user123", "1001", "rc4-md5"];
 const password_placeholders = ["( ) (default)"];
 const tun_interface_placeholders = ["tun0 (default)"];
@@ -349,8 +386,11 @@ const veth_host_placeholders = ["veth_host (default)"];
 const veth_ns_placeholders = ["veth_ns (default)"];
 const veth_host_ip_placeholders = ["10.200.1.1 (default)"];
 const veth_ns_ip_placeholders = ["10.200.1.2 (default)"];
-const cmd_placeholders = ["main.py", "flatpak run org.mozilla.firefox", "steam"];
-
+const cmd_placeholders = [
+	"main.py",
+	"flatpak run org.mozilla.firefox",
+	"steam",
+];
 </script>
 
 <template>

@@ -1,18 +1,15 @@
 {
-  "compilerOptions": {
-    "composite": true,
-    "skipLibCheck": true,
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true,
+	"compilerOptions": {
+		"composite": true,
+		"skipLibCheck": true,
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"allowSyntheticDefaultImports": true,
 
-    // Path mapping
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ]
-    }
-
-  },
-  "include": ["vite.config.ts"]
+		// Path mapping
+		"paths": {
+			"@/*": ["./src/*"]
+		}
+	},
+	"include": ["vite.config.ts"]
 }

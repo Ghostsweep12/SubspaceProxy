@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch, useTemplateRef } from "vue";
+import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from "vue";
 
 // Define interfaces for props and data structures
 interface Props {
-  placeholders?: string[];
+	placeholders?: string[];
 }
 // props
 const props = withDefaults(defineProps<Props>(), {
-  placeholders: () => ["Placeholder 1", "Placeholder 2", "Placeholder 3"],
+	placeholders: () => ["Placeholder 1", "Placeholder 2", "Placeholder 3"],
 });
 const emit = defineEmits(["submit", "change"]);
 const vanishingText = defineModel<string>({
-  default: "",
+	default: "",
 });
 const inputRef = useTemplateRef<HTMLInputElement>("inputRef");
 
@@ -23,45 +23,46 @@ const animationFrame = ref<number | null>(null);
 
 // Focus on input when mounted
 onMounted(() => {
-  if (!inputRef.value) return;
-  inputRef.value.focus();
+	if (!inputRef.value) return;
+	inputRef.value.focus();
 });
 
 function changePlaceholder(): void {
-  intervalRef.value = window.setInterval(() => {
-    currentPlaceholder.value = (currentPlaceholder.value + 1) % props.placeholders.length;
-  }, 3000);
+	intervalRef.value = window.setInterval(() => {
+		currentPlaceholder.value =
+			(currentPlaceholder.value + 1) % props.placeholders.length;
+	}, 3000);
 }
 
 function handleVisibilityChange(): void {
-  if (document.visibilityState !== "visible" && intervalRef.value) {
-    clearInterval(intervalRef.value);
-    intervalRef.value = null;
-  } else if (document.visibilityState === "visible") {
-    changePlaceholder();
-  }
+	if (document.visibilityState !== "visible" && intervalRef.value) {
+		clearInterval(intervalRef.value);
+		intervalRef.value = null;
+	} else if (document.visibilityState === "visible") {
+		changePlaceholder();
+	}
 }
 
 // Watch for value changes
 watch(vanishingText, (newVal: string) => {
-  if (!animating.value) {
-    emit("change", { target: { value: newVal } });
-  }
+	if (!animating.value) {
+		emit("change", { target: { value: newVal } });
+	}
 });
 
 onMounted(() => {
-  changePlaceholder();
-  document.addEventListener("visibilitychange", handleVisibilityChange);
+	changePlaceholder();
+	document.addEventListener("visibilitychange", handleVisibilityChange);
 });
 
 onBeforeUnmount(() => {
-  if (intervalRef.value) {
-    clearInterval(intervalRef.value);
-  }
-  if (animationFrame.value) {
-    cancelAnimationFrame(animationFrame.value);
-  }
-  document.removeEventListener("visibilitychange", handleVisibilityChange);
+	if (intervalRef.value) {
+		clearInterval(intervalRef.value);
+	}
+	if (animationFrame.value) {
+		cancelAnimationFrame(animationFrame.value);
+	}
+	document.removeEventListener("visibilitychange", handleVisibilityChange);
 });
 </script>
 
