@@ -13,7 +13,8 @@
 			"!!**/.biome",
 			"!!**/.git",
 			"!!**/.tauri",
-			"!!**/src-tauri"
+			"!!**/src-tauri",
+			"!!**/*.css"
 		]
 	},
 	"formatter": {

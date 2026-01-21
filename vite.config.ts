@@ -1,6 +1,6 @@
+import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import vue from "@vitejs/plugin-vue";
-import path from "path";
 import { defineConfig } from "vite";
 
 // "@"ts-expect-error process is a nodejs global
