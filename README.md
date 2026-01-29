@@ -29,3 +29,6 @@ Linux only. Sudo required in terminal for some commands. Run with **npm run taur
 - Temporarily modifies system networking 
 - IP forwarding is enabled globally while running (sysctl -w net.ipv4.ip_forward=1)
 - May misbehave in containers or sandboxed environments
+
+### License
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See the LICENSE file for details.

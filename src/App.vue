@@ -624,6 +624,15 @@ const cmd_placeholders = [
 				<RippleButton @click="show_advanced_modal = false">Close Advanced</RippleButton>
 			</div>
 		</div>
+		
+		<a
+		href="https://github.com/Ghostsweep12/SubspaceProxy"
+		target="_blank"
+		rel="noopener noreferrer"
+		>
+		Github
+		</a>
+
   	</main>
 </template>
 
