@@ -142,7 +142,7 @@ async function delete_profile_confirm(index: number) {
 			await invoke("delete_profile", { path: p.path });
 			load_profiles();
 		} catch (e) {
-			alert("Failed to delete: " + e);
+			alert(`Failed to delete: ${e}`);
 		}
 	}
 }
@@ -194,7 +194,7 @@ async function save_profile() {
 		});
 
 		if (editing_path.value) {
-			const new_filename = form.name.replace(/ /g, "_") + ".json";
+			const new_filename = `${form.name.replace(/ /g, "_")}.json`;
 			const old_filename = editing_path.value.split(/[\\/]/).pop();
 
 			if (old_filename !== new_filename) {
@@ -214,7 +214,7 @@ async function save_profile() {
 			load_profiles();
 		}
 	} catch (e) {
-		save_status.value = "Error: " + e;
+		save_status.value = `Error: ${e}`;
 	}
 }
 
@@ -240,7 +240,7 @@ async function load_profiles() {
 			is_cleaning: false,
 		}));
 	} catch (e) {
-		alert("Failed to list profiles: " + e);
+		alert(`Failed to list profiles: ${e}`);
 	}
 }
 
@@ -250,7 +250,7 @@ async function refresh_active_namespaces() {
 			"get_active_namespaces",
 		);
 	} catch (e) {
-		alert("Failed to get namespaces: " + e);
+		alert(`Failed to get namespaces: ${e}`);
 	}
 }
 
@@ -278,7 +278,7 @@ async function ping_profile(index: number) {
 		const res = await invoke<string>("ping", { ip: p.profile.ip });
 		p.ping_status = `${res}ms`;
 	} catch (e) {
-		p.ping_status = "No Response: " + e;
+		p.ping_status = `No Response: ${e}`;
 	} finally {
 		p.is_pinging = false;
 	}
@@ -296,7 +296,7 @@ async function port_check_profile(index: number) {
 		});
 		p.port_status = res;
 	} catch (e) {
-		p.port_status = "No Response: " + e;
+		p.port_status = `No Response: ${e}`;
 	} finally {
 		p.is_port_checking = false;
 	}
@@ -312,7 +312,7 @@ async function setup_ns_profile(index: number) {
 		p.ns_status = "Ready";
 		refresh_active_namespaces();
 	} catch (e) {
-		p.ns_status = "Failed: " + e;
+		p.ns_status = `Failed: ${e}`;
 	} finally {
 		p.is_setting_up = false;
 	}
@@ -332,7 +332,7 @@ async function run_profile(index: number) {
 		p.run_status = "Sent";
 		refresh_active_namespaces();
 	} catch (e) {
-		p.run_status = "Error: " + e;
+		p.run_status = `Error: ${e}`;
 	} finally {
 		setTimeout(() => {
 			p.is_running = false;
@@ -351,7 +351,7 @@ async function cleanup_profile(index: number) {
 		p.clean_status = "Cleaned";
 		refresh_active_namespaces();
 	} catch (e) {
-		p.clean_status = "Error: " + e;
+		p.clean_status = `Error: ${e}`;
 	} finally {
 		p.is_cleaning = false;
 	}
@@ -364,8 +364,15 @@ const name_placeholders = [
 	"Server Sock5 Port",
 	"MyVPN",
 ];
-const ip_placeholders = ["192.168.1.1", "fe80::xxxx:xxxx:xxxx:xxxx"];
-const port_placeholders = ["8080", "443", "1088"];
+const ip_placeholders = [
+	"192.168.1.1", 
+	"fe80::xxxx:xxxx:xxxx:xxxx"
+];
+const port_placeholders = [
+	"8080", 
+	"443", 
+	"1088"
+];
 const dns_placeholders = [
 	"8.8.8.8 (default)",
 	"2001:4860:4860::8888",
@@ -378,13 +385,30 @@ const namespace_placeholders = [
 	"custom_ns",
 	"proxyns",
 ];
-const username_placeholders = ["( ) (default)", "user123", "1001", "rc4-md5"];
-const password_placeholders = ["( ) (default)"];
-const tun_interface_placeholders = ["tun0 (default)"];
-const tun_ip_placeholders = ["10.0.0.2 (default)"];
-const veth_host_placeholders = ["veth_host (default)"];
-const veth_ns_placeholders = ["veth_ns (default)"];
-const veth_host_ip_placeholders = ["10.200.1.1 (default)"];
+const username_placeholders = [
+	"( ) (default)", 
+	"user123", 
+	"1001", 
+	"rc4-md5"
+];
+const password_placeholders = [
+	"( ) (default)"
+];
+const tun_interface_placeholders = [
+	"tun0 (default)"
+];
+const tun_ip_placeholders = [
+	"10.0.0.2 (default)"
+];
+const veth_host_placeholders = [
+	"veth_host (default)"
+];
+const veth_ns_placeholders = [
+	"veth_ns (default)"
+];
+const veth_host_ip_placeholders = [
+	"10.200.1.1 (default)"
+];
 const veth_ns_ip_placeholders = ["10.200.1.2 (default)"];
 const cmd_placeholders = [
 	"main.py",
@@ -394,183 +418,213 @@ const cmd_placeholders = [
 </script>
 
 <template>
-  <main class="container">
-    <div class="header">
-        <h2 class="title">Subspace Proxy</h2>
+	<main class="container">
+    	<div class="header">
+        	<h2 class="title">Subspace Proxy</h2>
         
-        <div class="cmd-bar">
-            <label>Command:</label>
-            <VanishingInput v-model="cmd" :placeholders="cmd_placeholders" />
-        </div>
-    </div>
+        	<div class="cmd-bar">
+            	<label>Command:</label>
+            	<VanishingInput v-model="cmd" :placeholders="cmd_placeholders" />
+        	</div>
+    	</div>
 
-    <div class="panel active-panel">
-        <h3>Active Namespaces</h3>
-        <div v-if="active_namespaces.length === 0" class="empty-state">No active namespaces found.</div>
-        <div v-else class="ns-grid-header">
-            <span>Namespace</span>
-            <span>Running Processes</span>
-        </div>
+		<div class="panel active-panel">
+			<h3>Active Namespaces</h3>
+			<div v-if="active_namespaces.length === 0" class="empty-state">No active namespaces found.</div>
+			<div v-else class="ns-grid-header">
+				<span>Namespace</span>
+				<span>Running Processes</span>
+			</div>
 
-        <div v-for="ns in active_namespaces" :key="ns.name" class="ns-row">
-            <span class="ns-name">{{ ns.name }}</span>
-            <span class="ns-procs">{{ ns.processes || '(none)' }}</span>
-        </div>
-    </div>
+			<div v-for="ns in active_namespaces" :key="ns.name" class="ns-row">
+				<span class="ns-name">{{ ns.name }}</span>
+				<span class="ns-procs">{{ ns.processes || '(none)' }}</span>
+			</div>
+		</div>
 
-    <div class="panel profiles-panel">
-        <div class="profiles-header">
-            <h3>Saved Profiles</h3>
-            <RippleButton @click="new_profile()" class="sm-btn bg-blue-600 text-white">+ New</RippleButton>
-        </div>
+		<div class="panel profiles-panel">
+			<div class="profiles-header">
+				<h3>Saved Profiles</h3>
+				<RippleButton @click="new_profile()" class="sm-btn bg-blue-600 text-white">+ New</RippleButton>
+			</div>
 
-        <div class="profile-list">
-            <div v-for="(p, index) in profiles" :key="p.filename" class="profile-card">
-                <div class="card-info">
-                    <span class="p-name">{{ p.filename }}</span>
-                    <span class="p-detail">{{ (p.profile.protocol || '').toUpperCase() }} : {{ p.profile.ip }}:{{ p.profile.port }}</span>
-                </div>
-                
-                <div class="card-actions">
-                    <div class="manage-group">
-                        <RippleButton 
-                            @click="edit_profile(index)" 
-                            class="sm-btn bg-amber-500 text-white"
-                        >
-                            Edit
-                        </RippleButton>
+			<div class="profile-list">
+				<div v-for="(p, index) in profiles" :key="p.filename" class="profile-card">
+					<div class="card-info">
+						<span class="p-name">{{ p.filename }}</span>
+						<span class="p-detail">{{ (p.profile.protocol || '').toUpperCase() }} : {{ p.profile.ip }}:{{ p.profile.port }}</span>
+					</div>
+					
+					<div class="card-actions">
+						<div class="manage-group">
+							<RippleButton 
+								@click="edit_profile(index)"
+								:disabled="active_namespaces.some(ns => ns.name === p.profile.namespace)"
+								class="sm-btn bg-amber-500 text-white"
+							>
+								Edit
+							</RippleButton>
 
-                        <RippleButton 
-                            @click="delete_profile_confirm(index)" 
-                            class="sm-btn bg-red-600 text-white"
-                        >
-                            Delete
-                        </RippleButton>
-                    </div>
+							<RippleButton 
+								@click="delete_profile_confirm(index)"
+								:disabled="active_namespaces.some(ns => ns.name === p.profile.namespace)"
+								class="sm-btn bg-red-600 text-white"
+							>
+								Delete
+							</RippleButton>
+						</div>
 
-                    <div class="separator"></div>
+						<div class="separator"></div>
 
-                    <RippleButton 
-                        @click="ping_profile(index)" 
-                        :disabled="p.is_pinging" 
-                        class="sm-btn action-btn"
-                        :class="{'button-good': p.ping_status.includes('ms'), 'button-bad': p.ping_status === 'Error'}"
-                    >
-                        {{ p.ping_status }}
-                    </RippleButton>
+						<RippleButton 
+							@click="ping_profile(index)" 
+							:disabled="p.is_pinging" 
+							class="sm-btn action-btn"
+							:class="{'button-good': p.ping_status.includes('ms'), 'button-bad': p.ping_status === 'Error'}"
+						>
+							{{ p.ping_status }}
+						</RippleButton>
 
-                    <RippleButton 
-                        @click="port_check_profile(index)" 
-                        :disabled="p.is_port_checking" 
-                        class="sm-btn action-btn"
-                        :class="{'button-good': p.port_status === 'Open', 'button-bad': p.port_status === 'Error'}"
-                    >
-                        {{ p.port_status }}
-                    </RippleButton>
+						<RippleButton 
+							@click="port_check_profile(index)" 
+							:disabled="p.is_port_checking" 
+							class="sm-btn action-btn"
+							:class="{'button-good': p.port_status === 'Open', 'button-bad': p.port_status === 'Error'}"
+						>
+							{{ p.port_status }}
+						</RippleButton>
 
-                    <RippleButton 
-                        @click="setup_ns_profile(index)" 
-                        :disabled="p.is_setting_up" 
-                        class="sm-btn action-btn bg-purple-600"
-                    >
-                        {{ p.ns_status }}
-                    </RippleButton>
+						<RippleButton 
+							@click="setup_ns_profile(index)" 
+							:disabled="p.is_setting_up || active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							class="sm-btn action-btn bg-purple-600"
+						>
+							{{ p.ns_status }}
+						</RippleButton>
 
-                     <RippleButton 
-                        @click="run_profile(index)" 
-                        :disabled="p.is_running || !cmd" 
-                        class="sm-btn action-btn bg-green-600"
-                    >
-                        {{ p.run_status }}
-                    </RippleButton>
+						<RippleButton 
+							@click="run_profile(index)" 
+							:disabled="p.is_running || !cmd || !active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							class="sm-btn action-btn bg-green-600"
+						>
+							{{ p.run_status }}
+						</RippleButton>
 
-                    <RippleButton 
-                        @click="cleanup_profile(index)" 
-                        :disabled="p.is_cleaning" 
-                        class="sm-btn action-btn bg-red-600"
-                    >
-                        {{ p.clean_status }}
-                    </RippleButton>
-                </div>
-            </div>
-        </div>
-    </div>
+						<RippleButton 
+							@click="cleanup_profile(index)" 
+							:disabled="p.is_cleaning || !active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							class="sm-btn action-btn bg-red-600"
+						>
+							{{ p.clean_status }}
+						</RippleButton>
+					</div>
+				</div>
+			</div>
+		</div>
 
-    <div v-if="show_modal" class="modal-overlay">
-      <div class="modal-content">
-        <h2>{{ editing_path ? 'Edit Profile' : 'New Proxy Profile' }}</h2>
-        <div class="form-grid">
-            <div class="form-group">
-              <label :class="{'text-red-500': form_errors.name}">Name</label>
-              <VanishingInput v-model="form.name" :placeholders="name_placeholders" />
-            </div>
+		<div v-if="show_modal" class="modal-overlay">
+			<div class="modal-content">
+				<h2>{{ editing_path ? 'Edit Profile' : 'New Proxy Profile' }}</h2>
+				<div class="form-grid">
+					<div class="form-group">
+						<label :class="{'text-red-500': form_errors.name}">Name</label>
+						<VanishingInput v-model="form.name" :placeholders="name_placeholders" />
+					</div>
 
-            <div class="form-group">
-              <label :class="{'text-red-500': form_errors.ip}">IP</label>
-              <VanishingInput v-model="form.ip" :placeholders="ip_placeholders" />
-            </div>
+					<div class="form-group">
+						<label :class="{'text-red-500': form_errors.ip}">IP</label>
+						<VanishingInput v-model="form.ip" :placeholders="ip_placeholders" />
+					</div>
 
-            <div class="form-group">
-              <label :class="{'text-red-500': form_errors.port}">Port</label>
-              <VanishingInput v-model="form.port" :placeholders="port_placeholders" />
-            </div>
+					<div class="form-group">
+						<label :class="{'text-red-500': form_errors.port}">Port</label>
+						<VanishingInput v-model="form.port" :placeholders="port_placeholders" />
+					</div>
 
-            <div class="form-group">
-              <label :class="{'text-red-500': form_errors.protocol}">Protocol</label>
-              <DropdownMenu>
-                <DropdownMenuTrigger class="w-full">
-                  <RippleButton type="button" class="w-full">
-                      {{ form.protocol ? form.protocol.toUpperCase() : 'Select Protocol' }}
-                  </RippleButton>
-                </DropdownMenuTrigger>
+					<div class="form-group">
+						<label :class="{'text-red-500': form_errors.protocol}">Protocol</label>
+						<DropdownMenu>
+							<DropdownMenuTrigger class="w-full">
+								<RippleButton type="button" class="w-full">
+									{{ form.protocol ? form.protocol.toUpperCase() : 'Select Protocol' }}
+								</RippleButton>
+							</DropdownMenuTrigger>
 
-                <DropdownMenuContent class="z-[200] bg-white border border-gray-200 shadow-xl min-w-[200px]">
-                  <DropdownMenuItem 
-                      v-for="type in proxy_types" 
-                      :key="type" 
-                      @click="form.protocol = type"
-                      class="cursor-pointer hover:bg-gray-100 p-2"
-                  >
-                    {{ type.toUpperCase() }}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
-        </div>
+							<DropdownMenuContent class="z-[200] bg-white border border-gray-200 shadow-xl min-w-[200px]">
+								<DropdownMenuItem 
+									v-for="type in proxy_types" 
+									:key="type" 
+									@click="form.protocol = type"
+									class="cursor-pointer hover:bg-gray-100 p-2"
+								>
+									{{ type.toUpperCase() }}
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</div>
+				</div>
 
-        <div class="grid place-content-center p-5">
-            <RippleButton type="button" @click="show_advanced_modal = true" class="sm-btn">Advanced Settings (Optional)</RippleButton>
-        </div>
+				<div class="grid place-content-center p-5">
+					<RippleButton type="button" @click="show_advanced_modal = true" class="sm-btn">Advanced Settings (Optional)</RippleButton>
+				</div>
+				
+				<div class="modal-actions">
+					<RippleButton @click="show_modal = false" class="bg-red-600">Cancel</RippleButton>
+					<RippleButton @click="save_profile" class="bg-blue-600">Save</RippleButton>
+					<p>{{ save_status }}</p>
+				</div>
+			</div>
+		</div>
 
-        <div v-if="show_advanced_modal" class="modal-overlay">
-          <div class="modal-content">
-            <h2>Advanced</h2>
-            <div class="scroll-form">
-                <div class="form-group"><label>DNS</label><VanishingInput v-model="form.dns" :placeholders="dns_placeholders" /></div>
-                <div class="form-group"><label>NS Name</label><VanishingInput v-model="form.namespace" :placeholders="namespace_placeholders" /></div>
-                <div class="form-group"><label>Username</label><VanishingInput v-model="form.username" :placeholders="username_placeholders" /></div>
-                <div class="form-group"><label>Password</label><VanishingInput v-model="form.password" :placeholders="password_placeholders" /></div>
-                <div class="form-group"><label>Tun</label><VanishingInput v-model="form.tun_interface" :placeholders="tun_interface_placeholders" /></div>
-                <div class="form-group"><label>Tun IP</label><VanishingInput v-model="form.tun_ip" :placeholders="tun_ip_placeholders" /></div>
-                <div class="form-group"><label>Veth Host</label><VanishingInput v-model="form.veth_host" :placeholders="veth_host_placeholders" /></div>
-                <div class="form-group"><label>Veth NS</label><VanishingInput v-model="form.veth_ns" :placeholders="veth_ns_placeholders" /></div>
-                <div class="form-group"><label>Host IP</label><VanishingInput v-model="form.veth_host_ip" :placeholders="veth_host_ip_placeholders" /></div>
-                <div class="form-group"><label>NS IP</label><VanishingInput v-model="form.veth_ns_ip" :placeholders="veth_ns_ip_placeholders" /></div>
-            </div>
-            
-            <RippleButton @click="show_advanced_modal = false">Close Advanced</RippleButton>
-          </div>
-        </div>
-        
-        <div class="modal-actions">
-          <RippleButton @click="show_modal = false" class="bg-red-600">Cancel</RippleButton>
-          <RippleButton @click="save_profile" class="bg-blue-600">Save</RippleButton>
-          <p>{{ save_status }}</p>
-        </div>
-      
-      </div>
-    </div>
-  </main>
+		<div v-if="show_advanced_modal" class="modal-overlay">
+			<div class="modal-content">
+				<h2>Advanced</h2>
+				<div class="scroll-form">
+					<div class="form-group">
+						<label>DNS</label>
+						<VanishingInput v-model="form.dns" :placeholders="dns_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>NS Name</label>
+						<VanishingInput v-model="form.namespace" :placeholders="namespace_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>Username</label>
+						<VanishingInput v-model="form.username" :placeholders="username_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>Password</label>
+						<VanishingInput v-model="form.password" :placeholders="password_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>Tun</label>
+						<VanishingInput v-model="form.tun_interface" :placeholders="tun_interface_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>Tun IP</label>
+						<VanishingInput v-model="form.tun_ip" :placeholders="tun_ip_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>Veth Host</label>
+						<VanishingInput v-model="form.veth_host" :placeholders="veth_host_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>Veth NS</label>
+						<VanishingInput v-model="form.veth_ns" :placeholders="veth_ns_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>Host IP</label>
+						<VanishingInput v-model="form.veth_host_ip" :placeholders="veth_host_ip_placeholders" />
+					</div>
+					<div class="form-group">
+						<label>NS IP</label>
+						<VanishingInput v-model="form.veth_ns_ip" :placeholders="veth_ns_ip_placeholders" />
+					</div>
+				</div>
+				<RippleButton @click="show_advanced_modal = false">Close Advanced</RippleButton>
+			</div>
+		</div>
+  	</main>
 </template>
 
 <style>

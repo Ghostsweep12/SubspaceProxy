@@ -21,9 +21,13 @@ const buttonRipples = ref<
 	Array<{ x: number; y: number; size: number; key: number }>
 >([]);
 
-function handleClick(event: MouseEvent) {
+function handlePointerDown(event: PointerEvent) {
 	if (props.disabled) return;
 	createRipple(event);
+}
+
+function handleClick(event: MouseEvent) {
+	if (props.disabled) return;
 	emit("click", event);
 }
 
@@ -59,6 +63,7 @@ watchEffect(() => {
     :class="[$props.class, props.disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer']"
     class="bg-background text-primary relative flex items-center justify-center overflow-hidden rounded-lg border-2 px-4 py-2 text-center"
     :style="{ '--duration': `${$props.duration}ms` }"
+    @pointerdown="handlePointerDown"
     @click="handleClick"
   >
     <div class="relative z-10">
