@@ -1,34 +1,84 @@
-## Experimental Test Build
+# Subspace Proxy Dev Build
 
-Linux only. Sudo required in terminal for some commands. Run with **npm run tauri dev**.
+**Subspace Proxy** is a specialized, lightweight GUI application designed to isolate Linux applications within their own **Network Namespaces**.
 
-### Execution model
-- Commands are launched **non-interactively**
-- No TTY / no interactive stdin/stdout
-- Interactive shells (bash, zsh, fish) will not work
+It allows you to route specific processes (like Steam, Firefox, or terminal commands) through distinct proxy tunnels (SOCKS5, HTTP, Shadowsocks, etc.) without affecting your system-wide network configuration.
 
-### GUI applications
-- GUI applications **are supported**
-- X11 / Wayland apps such as Steam and Firefox work
-- The user’s desktop session (DISPLAY, audio, D-Bus) is reused
+## 🚀 Features
 
-### Requirements
-- GNU bash
-- sudo (temporary; will be replaced by a privilege helper)
-- iproute2
-- iputils
-- coreutils
-- procps-ng
+* **Network Isolation:** Uses Linux Namespaces (`ip netns`) to sandbox applications networking.
+* **Protocols:** Connect via SOCKS5, SOCKS4, HTTP, Shadowsocks, and Relay. (More coming soon)
+* **Desktop Integration:** Automatically injects PulseAudio, PipeWire, Wayland, X11, and D-Bus environment variables, ensuring **GUI applications** work with sound and video.
+* **Tun2Socks Integration:** Tun2Socks converts both TCP and UDP traffic from the namespace into proxy-compatible packets.
+* **Diagnostics:** Built-in tools to **Ping** the target server and check **Port** status before launching.
+* **Smart Management:** Automatically handles virtual interfaces (`veth`, `tun`), routing tables, and cleanup.
 
-### Kernel requirements
-- Network namespaces
-- Virtual ethernet (veth)
-- TUN/TAP support
+## 🛠️ How It Works
 
-### Warning
-- Temporarily modifies system networking 
-- IP forwarding is enabled globally while running (sysctl -w net.ipv4.ip_forward=1)
-- May misbehave in containers or sandboxed environments
+Imagine you computer as a house:
 
-### License
-This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0). See the LICENSE file for details.
+1. **Namespace Creation:** The app creates a new Network Namespace (a sealed network environment). *Like creating a new room in your house.*
+2. **Bridging:** It links the namespace to your host system using a **Veth (Virtual Ethernet)** pair. *A door to connect your house and your room.*
+3. **Proxying:** Inside the namespace, traffic is routed to a **TUN** interface. The tun2socks utility captures traffic from the TUN interface and forwards it to your specified proxy server. *Imagine a conveyor belt (TUN) leading to a packaging machine (Tun2Socks). Every "letter" is re-addressed in a new package before it leaves.*
+4. **Launching:** When you run a command, the app injects your current user's desktop environment (X11/Wayland/Audio) into the namespace so the app behaves normally, but its traffic is forced through the tunnel.  *Now when an app in run in the room, all of its "mail" is sent through the packaging machine and out the door, and once the recipient (Remote Server) opens the package and mails the real letter, its response can come back to the house then the room.*
+
+The apps and activity are all still running in your house, its just some of the mail sent out is packaged differently from the isolated apps.
+
+## 📦 Usage
+
+### 1. Creating a Profile
+
+1. Click **+ New** to create a profile.
+2. Enter your Proxy **Name** (cosmetic) **IP**, **Port**, and **Protocol**.
+3. (Optional) Configuring authentication (User/Pass) and other specifics in the advanced settings.
+4. **Save** the profile.
+
+### 2. Launching an Application
+
+1. **Test Connection:** Use the `Ping` and `Port` buttons to double check the connection that is about to be made.
+2. **Setup Environment:** Click the **Setup** button (Purple). This creates the namespace and virtual interfaces.
+3. **Enter Command:** In the top command bar, type the application you want to run:
+* `firefox`
+* `steam`
+* `curl ifconfig.me`
+4. **Run:** Click the **Run** button (Green) to launch the app. You can re-enter the command and run multiple apps in the same namespace!
+
+### 3. Cleanup
+
+When finished, click **Clean** (Red). This destroys the namespace, deletes the virtual interfaces, and kills any processes within.
+
+## ⚠️ Warning
+
+* **Root Privileges:** This application requires `sudo` permissions to create namespaces and modify network interfaces. You may be prompted for your password in the terminal running the app. (To be fixed on release)
+* **Non-Interactive:** Commands are launched non-interactively. You cannot run interactive shells like `bash` or `zsh` that require TTY input.
+* **System Modification:** While running, the app enables global IP forwarding (`sysctl -w net.ipv4.ip_forward=1`).
+* **Container Conflicts:** May misbehave if run inside Docker or other sandboxed environments due to nested namespace restrictions.
+
+## 🔧 Development & Installation
+
+This project is built using **Tauri**, **Vue 3**, and **Tun2Socks**.
+
+### Prerequisites
+
+* **Linux** (Kernel with namespace, veth, and tun/tap support)
+* **Node.js** & **npm**
+* **Rust** & **Cargo**
+* **Runtime Dependencies:**
+* `tun2socks` (Must be in your PATH)
+* `iproute2` (`ip` command)
+* `iputils` (`ping`)
+* `bash`
+
+### Setup
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Run in development mode
+npm run tauri dev
+```
+
+## 📜 License
+
+This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See the `LICENSE` file for details.
