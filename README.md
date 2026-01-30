@@ -1,10 +1,16 @@
 # Subspace Proxy Dev Build
 
+[![status](https://shields.io/badge/status-Developer_Build-green.svg)](https://github.com/Ghostsweep12/SubspaceProxy)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
+![Tauri](https://img.shields.io/badge/tauri-%2324C8DB.svg?style=for-the-badge&logo=tauri&logoColor=%23FFFFFF)
+![Vue](https://img.shields.io/badge/Vue.js-35495E?style=for-the-badge&logo=vuedotjs&logoColor=4FC08D)
+[![Tun2Socks](https://shields.io/badge/Tun2Socks-green.svg)](https://github.com/xjasonlyu/tun2socks)
+
 **Subspace Proxy** is a specialized, lightweight GUI application designed to isolate Linux applications within their own **Network Namespaces**.
 
 It allows you to route specific processes (like Steam, Firefox, or terminal commands) through distinct proxy tunnels (SOCKS5, HTTP, Shadowsocks, etc.) without affecting your system-wide network configuration.
 
-## 🚀 Features
+## Features
 
 * **Network Isolation:** Uses Linux Namespaces (`ip netns`) to sandbox applications networking.
 * **Protocols:** Connect via SOCKS5, SOCKS4, HTTP, Shadowsocks, and Relay. (More coming soon)
@@ -13,23 +19,25 @@ It allows you to route specific processes (like Steam, Firefox, or terminal comm
 * **Diagnostics:** Built-in tools to **Ping** the target server and check **Port** status before launching.
 * **Smart Management:** Automatically handles virtual interfaces (`veth`, `tun`), routing tables, and cleanup.
 
-## 🛠️ How It Works
+## How It Works
 
 Imagine you computer as a house:
 
-1. **Namespace Creation:** The app creates a new Network Namespace (a sealed network environment). *Like creating a new room in your house.*
-2. **Bridging:** It links the namespace to your host system using a **Veth (Virtual Ethernet)** pair. *A door to connect your house and your room.*
-3. **Proxying:** Inside the namespace, traffic is routed to a **TUN** interface. The tun2socks utility captures traffic from the TUN interface and forwards it to your specified proxy server. *Imagine a conveyor belt (TUN) leading to a packaging machine (Tun2Socks). Every "letter" is re-addressed in a new package before it leaves.*
-4. **Launching:** When you run a command, the app injects your current user's desktop environment (X11/Wayland/Audio) into the namespace so the app behaves normally, but its traffic is forced through the tunnel.  *Now when an app in run in the room, all of its "mail" is sent through the packaging machine and out the door, and once the recipient (Remote Server) opens the package and mails the real letter, its response can come back to the house then the room.*
+1. **Namespace Creation:** The app creates a new Network Namespace (a sealed network environment). 
+> *Like creating a new room in your house.*
+2. **Bridging:** It links the namespace to your host system using a **Veth (Virtual Ethernet)** pair. 
+> *A door to connect your house and your room.*
+3. **Proxying:** Inside the namespace, traffic is routed to a **TUN** interface. The tun2socks utility captures traffic from the TUN interface and forwards it to your specified proxy server. 
+> *Imagine a conveyor belt (TUN) leading to a packaging machine (Tun2Socks). Every "letter" is re-addressed in a new package before it leaves.*
+4. **Launching:** When you run a command, the app injects your current user's desktop environment (X11/Wayland/Audio) into the namespace so the app behaves normally, but its traffic is forced through the tunnel. 
+> *Now when an app in run in the room, all of its mail (Network Packets) is sent through the packaging machine and out the door, and once the recipient (Remote Server) opens the package and mails the real letter, its response can come back to the house.*
 
-The apps and activity are all still running in your house, its just some of the mail sent out is packaged differently from the isolated apps.
-
-## 📦 Usage
+## Usage
 
 ### 1. Creating a Profile
 
 1. Click **+ New** to create a profile.
-2. Enter your Proxy **Name** (cosmetic) **IP**, **Port**, and **Protocol**.
+2. Enter your Proxy **Name** (cosmetic), **IP**, **Port**, and **Protocol**.
 3. (Optional) Configuring authentication (User/Pass) and other specifics in the advanced settings.
 4. **Save** the profile.
 
@@ -47,14 +55,14 @@ The apps and activity are all still running in your house, its just some of the 
 
 When finished, click **Clean** (Red). This destroys the namespace, deletes the virtual interfaces, and kills any processes within.
 
-## ⚠️ Warning
+## Warning
 
 * **Root Privileges:** This application requires `sudo` permissions to create namespaces and modify network interfaces. You may be prompted for your password in the terminal running the app. (To be fixed on release)
 * **Non-Interactive:** Commands are launched non-interactively. You cannot run interactive shells like `bash` or `zsh` that require TTY input.
 * **System Modification:** While running, the app enables global IP forwarding (`sysctl -w net.ipv4.ip_forward=1`).
 * **Container Conflicts:** May misbehave if run inside Docker or other sandboxed environments due to nested namespace restrictions.
 
-## 🔧 Development & Installation
+## Development & Installation
 
 This project is built using **Tauri**, **Vue 3**, and **Tun2Socks**.
 
@@ -79,6 +87,6 @@ npm install
 npm run tauri dev
 ```
 
-## 📜 License
+## License
 
 This project is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0)**. See the `LICENSE` file for details.
