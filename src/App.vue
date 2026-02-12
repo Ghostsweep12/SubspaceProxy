@@ -1,6 +1,4 @@
 <script setup lang="ts">
-// UI imports
-
 // Library imports
 import { invoke } from "@tauri-apps/api/core";
 import { onMounted, onUnmounted, reactive, ref } from "vue";
@@ -90,6 +88,128 @@ const proxy_types = [
 	"reject",
 ];
 
+// Placeholder animations
+const name_placeholders = [
+	"Proxy1",
+	"Server SS Port",
+	"Server Sock5 Port",
+	"MyVPN",
+];
+const ip_placeholders = [
+	"192.168.1.1", 
+	"fe80::xxxx:xxxx:xxxx:xxxx"
+];
+const port_placeholders = [
+	"8080", 
+	"443", 
+	"1088"
+];
+const dns_placeholders = [
+	"8.8.8.8 (default)",
+	"2001:4860:4860::8888",
+	"1.1.1.1",
+	"2606:4700:4700::1111",
+];
+const namespace_placeholders = [
+	"namespace (default)",
+	"default",
+	"custom_ns",
+	"proxyns",
+];
+const username_placeholders = [
+	"( ) (default)", 
+	"user123", 
+	"1001", 
+	"rc4-md5"
+];
+const password_placeholders = [
+	"( ) (default)"
+];
+const tun_interface_placeholders = [
+	"tun0 (default)"
+];
+const tun_ip_placeholders = [
+	"10.0.0.2 (default)"
+];
+const veth_host_placeholders = [
+	"veth_host (default)"
+];
+const veth_ns_placeholders = [
+	"veth_ns (default)"
+];
+const veth_host_ip_placeholders = [
+	"10.200.1.1 (default)"
+];
+const veth_ns_ip_placeholders = [
+	"10.200.1.2 (default)"
+];
+const cmd_placeholders = [
+	"curl ifconfig.me",
+	"flatpak run org.mozilla.firefox",
+	"steam",
+];
+
+// Profile List
+const profiles = ref<profile_entry[]>([]);
+const active_namespaces = ref<namespace_info[]>([]);
+const cmd = ref<string>("");
+
+async function load_profiles() {
+	try {
+		const result = await invoke<profile_entry[]>("list_profiles");
+		profiles.value = result.map((p) => ({
+			...p,
+			ping_status: "Ping",
+			port_status: "Port",
+			ns_status: "Setup",
+			run_status: "Run",
+			clean_status: "Clean",
+			is_pinging: false,
+			is_port_checking: false,
+			is_setting_up: false,
+			is_running: false,
+			is_cleaning: false,
+		}));
+	} catch (e) {
+		alert(`Failed to list profiles: ${e}`);
+	}
+}
+
+async function refresh_active_namespaces() {
+	try {
+		active_namespaces.value = await invoke<namespace_info[]>(
+			"get_active_namespaces",
+		);
+	} catch (e) {
+		alert(`Failed to get namespaces: ${e}`);
+	}
+}
+
+// Refresh
+let refreshTimer: number | null = null;
+onMounted(() => {
+	load_profiles();
+	refresh_active_namespaces();
+	refreshTimer = window.setInterval(() => {
+		load_profiles();
+		refresh_active_namespaces();
+	}, 10000);
+});
+
+onUnmounted(() => {
+	if (refreshTimer) clearInterval(refreshTimer);
+});
+
+// Reset Form
+function reset_form() {
+	form.name = "";
+	form.ip = "";
+	form.port = "";
+	form.protocol = "";
+	form.username = "";
+	form.password = "";
+}
+
 // Random number for interfaces
 function apply_random_network_values() {
 	const r = Math.floor(Math.random() * 253) + 1;
@@ -101,6 +221,7 @@ function apply_random_network_values() {
 	form.veth_ns_ip = `10.200.${r}.2`;
 }
 
+// Button functions here
 // New profile
 function new_profile() {
 	reset_form();
@@ -145,16 +266,6 @@ async function delete_profile_confirm(index: number) {
 			alert(`Failed to delete: ${e}`);
 		}
 	}
-}
-
-// Reset Form
-function reset_form() {
-	form.name = "";
-	form.ip = "";
-	form.port = "";
-	form.protocol = "";
-	form.username = "";
-	form.password = "";
 }
 
 // Save Profile
@@ -217,57 +328,6 @@ async function save_profile() {
 		save_status.value = `Error: ${e}`;
 	}
 }
-
-// Profile List
-const profiles = ref<profile_entry[]>([]);
-const active_namespaces = ref<namespace_info[]>([]);
-const cmd = ref<string>("");
-
-async function load_profiles() {
-	try {
-		const result = await invoke<profile_entry[]>("list_profiles");
-		profiles.value = result.map((p) => ({
-			...p,
-			ping_status: "Ping",
-			port_status: "Port",
-			ns_status: "Setup",
-			run_status: "Run",
-			clean_status: "Clean",
-			is_pinging: false,
-			is_port_checking: false,
-			is_setting_up: false,
-			is_running: false,
-			is_cleaning: false,
-		}));
-	} catch (e) {
-		alert(`Failed to list profiles: ${e}`);
-	}
-}
-
-async function refresh_active_namespaces() {
-	try {
-		active_namespaces.value = await invoke<namespace_info[]>(
-			"get_active_namespaces",
-		);
-	} catch (e) {
-		alert(`Failed to get namespaces: ${e}`);
-	}
-}
-
-// Refresh
-let refreshTimer: number | null = null;
-onMounted(() => {
-	load_profiles();
-	refresh_active_namespaces();
-	refreshTimer = window.setInterval(() => {
-		load_profiles();
-		refresh_active_namespaces();
-	}, 10000);
-});
-
-onUnmounted(() => {
-	if (refreshTimer) clearInterval(refreshTimer);
-});
 
 // Ping
 async function ping_profile(index: number) {
@@ -357,64 +417,6 @@ async function cleanup_profile(index: number) {
 	}
 }
 
-// Placeholder animation
-const name_placeholders = [
-	"Proxy1",
-	"Server SS Port",
-	"Server Sock5 Port",
-	"MyVPN",
-];
-const ip_placeholders = [
-	"192.168.1.1", 
-	"fe80::xxxx:xxxx:xxxx:xxxx"
-];
-const port_placeholders = [
-	"8080", 
-	"443", 
-	"1088"
-];
-const dns_placeholders = [
-	"8.8.8.8 (default)",
-	"2001:4860:4860::8888",
-	"1.1.1.1",
-	"2606:4700:4700::1111",
-];
-const namespace_placeholders = [
-	"namespace (default)",
-	"default",
-	"custom_ns",
-	"proxyns",
-];
-const username_placeholders = [
-	"( ) (default)", 
-	"user123", 
-	"1001", 
-	"rc4-md5"
-];
-const password_placeholders = [
-	"( ) (default)"
-];
-const tun_interface_placeholders = [
-	"tun0 (default)"
-];
-const tun_ip_placeholders = [
-	"10.0.0.2 (default)"
-];
-const veth_host_placeholders = [
-	"veth_host (default)"
-];
-const veth_ns_placeholders = [
-	"veth_ns (default)"
-];
-const veth_host_ip_placeholders = [
-	"10.200.1.1 (default)"
-];
-const veth_ns_ip_placeholders = ["10.200.1.2 (default)"];
-const cmd_placeholders = [
-	"main.py",
-	"flatpak run org.mozilla.firefox",
-	"steam",
-];
 </script>
 
 <template>

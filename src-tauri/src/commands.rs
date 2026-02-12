@@ -1,6 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::env;
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tauri::path::BaseDirectory;
 use tauri::AppHandle;
@@ -36,14 +34,18 @@ pub struct NamespaceInfo {
     processes: String,
 }
 
-pub fn call_bash_function(function_name: &str, args: &[&str]) -> Result<(i32, String, String), String> {
+pub fn call_bash_function(app: &AppHandle, function_name: &str, args: &[&str]) -> Result<(i32, String, String), String> {
     // Call a bash function from functions.sh and supply it arguements, then capture its output
-    let exe_path =
-        env::current_exe().map_err(|e| format!("Failed to get current exe path: {e}"))?;
-    let exe_dir = exe_path
-        .parent()
-        .ok_or("Failed to get exe parent directory")?;
-    let functions_path: PathBuf = exe_dir.join("functions.sh");
+    // Dependency paths here
+    let functions_path = app
+        .path()
+        .resolve("functions.sh", BaseDirectory::Resource)
+        .map_err(|e| format!("Failed to resolve functions.sh: {e}"))?;
+
+    let tun2socks_path = app
+        .path()
+        .resolve("tun2socks-x86_64-unknown-linux-gnu", BaseDirectory::Resource)
+        .map_err(|e| format!("Failed to resolve tun2socks binary: {e}"))?;
 
     let bash_command = format!(
         "set -euo pipefail; source '{}' && {} \"$@\"",
@@ -52,6 +54,10 @@ pub fn call_bash_function(function_name: &str, args: &[&str]) -> Result<(i32, St
     );
 
     let mut command = Command::new("bash");
+    
+    // Inject dependencies here
+    command.env("TUN2SOCKS", tun2socks_path);
+    
     command.arg("-c").arg(bash_command).arg("--");
 
     for arg in args {
@@ -106,14 +112,14 @@ pub async fn list_profiles(app: AppHandle) -> Result<Vec<ProfileEntry>, String> 
 }
 
 #[tauri::command]
-pub async fn get_active_namespaces() -> Result<Vec<NamespaceInfo>, String> {
+pub async fn get_active_namespaces(app: AppHandle) -> Result<Vec<NamespaceInfo>, String> {
     // Read the currently active namespaces and their associated processes
-    let (_return_code, stdout, _stderr) = call_bash_function("get_active_namespaces", &[]).map_err(|e| e.to_string())?;
+    let (_return_code, stdout, _stderr) = call_bash_function(&app, "get_active_namespaces", &[]).map_err(|e| e.to_string())?;
     let ns_list: Vec<&str> = stdout.trim().split('\n').filter(|s| !s.is_empty()).collect();
     
     let mut infos = Vec::new();
     for ns in ns_list {
-        let (_return_code, pstdout, _stderr) = call_bash_function("get_ns_pids", &[ns]).unwrap_or((0, "".to_string(), "".to_string()));
+        let (_return_code, pstdout, _stderr) = call_bash_function(&app, "get_ns_pids", &[ns]).unwrap_or((0, "".to_string(), "".to_string()));
         infos.push(NamespaceInfo {
             name: ns.to_string(),
             processes: pstdout.trim().to_string(),
@@ -123,11 +129,12 @@ pub async fn get_active_namespaces() -> Result<Vec<NamespaceInfo>, String> {
 }
 
 #[tauri::command]
-pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
+pub async fn setup_namespace(app: AppHandle, profile_path: String) -> Result<String, String> {
     // Create the namespace with all interfaces and initalize tun2socks
     let profile_data = fetch_profile(profile_path.clone()).await?;
 
     call_bash_function(
+        &app,
         "setup_namespace",
         &[
             &profile_data.ip,
@@ -146,7 +153,7 @@ pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
 
     match profile_data.protocol.as_str() {
         "socks5" => {
-            call_bash_function("tun2socks_socks5", &[
+            call_bash_function(&app, "tun2socks_socks5", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
@@ -156,7 +163,7 @@ pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
             ]).map_err(|e| format!("Failed to setup SOCKS5: {}", e))?;
         }
         "socks4" => {
-            call_bash_function("tun2socks_socks4", &[
+            call_bash_function(&app, "tun2socks_socks4", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
@@ -165,7 +172,7 @@ pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
             ]).map_err(|e| format!("Failed to setup SOCKS4: {}", e))?;
         }
         "http" => {
-            call_bash_function("tun2socks_http", &[
+            call_bash_function(&app, "tun2socks_http", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
@@ -173,7 +180,7 @@ pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
             ]).map_err(|e| format!("Failed to setup HTTP: {}", e))?;
         }
         "shadowsocks" => {
-            call_bash_function("tun2socks_shadowsocks", &[
+            call_bash_function(&app, "tun2socks_shadowsocks", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
@@ -183,7 +190,7 @@ pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
             ]).map_err(|e| format!("Failed to setup Shadowsocks: {}", e))?;
         }
         "relay" => {
-            call_bash_function("tun2socks_relay", &[
+            call_bash_function(&app, "tun2socks_relay", &[
                 &profile_data.ip,
                 &profile_data.port,
                 &profile_data.namespace,
@@ -193,13 +200,13 @@ pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
             ]).map_err(|e| format!("Failed to setup Relay: {}", e))?;
         }
         "direct" => {
-            call_bash_function("tun2socks_direct", &[
+            call_bash_function(&app, "tun2socks_direct", &[
                 &profile_data.namespace,
                 &profile_data.tun_interface,
             ]).map_err(|e| format!("Failed to setup Direct: {}", e))?;
         }
         "reject" => {
-            call_bash_function("tun2socks_reject", &[
+            call_bash_function(&app, "tun2socks_reject", &[
                 &profile_data.namespace,
                 &profile_data.tun_interface,
             ]).map_err(|e| format!("Failed to setup Reject: {}", e))?;
@@ -213,11 +220,11 @@ pub async fn setup_namespace(profile_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn run(profile_path: String, cmd: String) -> Result<String, String> {
+pub async fn run(app: AppHandle, profile_path: String, cmd: String) -> Result<String, String> {
     // Run command in namespace
     let profile_data = fetch_profile(profile_path.clone()).await?;
 
-    call_bash_function("run_command_in_namespace", &[
+    call_bash_function(&app, "run_command_in_namespace", &[
         &profile_data.namespace,
         &cmd,
     ])
@@ -227,11 +234,11 @@ pub async fn run(profile_path: String, cmd: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn cleanup(profile_path: String) -> Result<String, String> {
+pub async fn cleanup(app: AppHandle, profile_path: String) -> Result<String, String> {
     // Remove the namespace and associated interfaces
     let profile_data = fetch_profile(profile_path.clone()).await?;
     
-    call_bash_function("cleanup", &[
+    call_bash_function(&app, "cleanup", &[
         &profile_data.namespace,
         &profile_data.veth_host,
     ])
@@ -303,9 +310,9 @@ pub async fn fetch_profile(profile_path: String) -> Result<Profile, String> {
 }
 
 #[tauri::command]
-pub async fn ping(ip: &str) -> Result<String, String> {
+pub async fn ping(app: AppHandle, ip: &str) -> Result<String, String> {
     // Check the latency of the server
-    let (_return_code, stdout, _stderr) = call_bash_function("ping_test", &[ip]).map_err(|e| format!("Failed to ping server: {}", e))?;
+    let (_return_code, stdout, _stderr) = call_bash_function(&app, "ping_test", &[ip]).map_err(|e| format!("Failed to ping server: {}", e))?;
 
     let avg_ping = stdout
         .lines()
@@ -328,9 +335,9 @@ pub async fn ping(ip: &str) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn port(ip: &str, port: &str) -> Result<String, String> {
+pub async fn port(app: AppHandle, ip: &str, port: &str) -> Result<String, String> {
     // Check if the port is open
-    let (_return_code, stdout, _stderr) = call_bash_function("port_test", &[ip, port]).map_err(|e| e.to_string())?;
+    let (_return_code, stdout, _stderr) = call_bash_function(&app, "port_test", &[ip, port]).map_err(|e| e.to_string())?;
     
     let words: Vec<&str> = stdout.split_whitespace().collect();
 

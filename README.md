@@ -4,7 +4,7 @@
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 ![Tauri](https://img.shields.io/badge/tauri-%2324C8DB.svg?style=for-the-badge&logo=tauri&logoColor=%23FFFFFF)
 ![Vue](https://img.shields.io/badge/Vue.js-35495E?style=for-the-badge&logo=vuedotjs&logoColor=4FC08D)
-[![Tun2Socks](https://shields.io/badge/Tun2Socks-green.svg)](https://github.com/xjasonlyu/tun2socks)
+[![Tun2Socks](https://shields.io/badge/Tun2Socks-blue.svg)](https://github.com/xjasonlyu/tun2socks)
 
 **Subspace Proxy** is a specialized, lightweight GUI application designed to isolate Linux applications within their own **Network Namespaces**.
 
@@ -34,6 +34,8 @@ Imagine you computer as a house:
 
 ## Usage
 
+Before using the appimage, ensure your kernal supports namespace, veth, and tun/tap. As well as having fully functioning `iproute2`, `iputils`, and `bash` utilities.
+
 ### 1. Creating a Profile
 
 1. Click **+ New** to create a profile.
@@ -57,12 +59,12 @@ When finished, click **Clean** (Red). This destroys the namespace, deletes the v
 
 ## Warning
 
-* **Root Privileges:** This application requires `sudo` permissions to create namespaces and modify network interfaces. You may be prompted for your password in the terminal running the app. (To be fixed on release)
+* **Root Privileges:** This application requires `sudo` permissions to create namespaces and modify network interfaces.
 * **Non-Interactive:** Commands are launched non-interactively. You cannot run interactive shells like `bash` or `zsh` that require TTY input.
 * **System Modification:** While running, the app enables global IP forwarding (`sysctl -w net.ipv4.ip_forward=1`).
 * **Container Conflicts:** May misbehave if run inside Docker or other sandboxed environments due to nested namespace restrictions.
 
-## Development & Installation
+## Developer Installation
 
 This project is built using **Tauri**, **Vue 3**, and **Tun2Socks**.
 
@@ -71,11 +73,11 @@ This project is built using **Tauri**, **Vue 3**, and **Tun2Socks**.
 * **Linux** (Kernel with namespace, veth, and tun/tap support)
 * **Node.js** & **npm**
 * **Rust** & **Cargo**
-* **Runtime Dependencies:**
-* `tun2socks` (Must be in your PATH)
-* `iproute2` (`ip` command)
-* `iputils` (`ping`)
+* `tun2socks`
+* `iproute2`
+* `iputils`
 * `bash`
+* `sudo`
 
 ### Setup
 

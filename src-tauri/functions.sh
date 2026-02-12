@@ -155,7 +155,7 @@ function tun2socks_socks5 {
     fi
     sudo ip netns exec "$NS" bash -c "
         set -m
-        tun2socks \
+        $TUN2SOCKS \
             -device tun://$TUN \
             -proxy socks5://$IP:$PORT \
             -loglevel warning \
@@ -179,7 +179,7 @@ function tun2socks_socks4 {
     fi
     sudo ip netns exec "$NS" bash -c "
         set -m
-        tun2socks \
+        $TUN2SOCKS \
             -device tun://$TUN \
             -proxy socks4://$USERID$IP:$PORT \
             -loglevel warning \
@@ -197,7 +197,7 @@ function tun2socks_http {
     local TUN=$4
     sudo ip netns exec "$NS" bash -c "
         set -m
-        tun2socks \
+        $TUN2SOCKS \
             -device tun://$TUN \
             -proxy http://$IP:$PORT \
             -loglevel warning \
@@ -222,7 +222,7 @@ function tun2socks_shadowsocks {
     fi
     sudo ip netns exec "$NS" bash -c "
         set -m
-        tun2socks \
+        $TUN2SOCKS \
             -device tun://$TUN \
             -proxy ss://$AUTH$IP:$PORT \
             -loglevel warning \
@@ -247,7 +247,7 @@ function tun2socks_relay {
     fi
     sudo ip netns exec "$NS" bash -c "
         set -m
-        tun2socks \
+        $TUN2SOCKS \
             -device tun://$TUN \
             -proxy relay://$AUTH$IP:$PORT \
             -loglevel warning \
@@ -263,7 +263,7 @@ function tun2socks_direct {
     local TUN=$2
     sudo ip netns exec "$NS" bash -c "
         set -m
-        tun2socks \
+        $TUN2SOCKS \
             -device tun://$TUN \
             -proxy direct:// \
             -loglevel warning \
@@ -279,7 +279,7 @@ function tun2socks_reject {
     local TUN=$2
     sudo ip netns exec "$NS" bash -c "
         set -m
-        tun2socks \
+        $TUN2SOCKS \
             -device tun://$TUN \
             -proxy reject:// \
             -loglevel warning \
