@@ -1,6 +1,6 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "Subspace Proxy",
+	"productName": "SubspaceProxy",
 	"version": "1.0.0-alpha",
 	"identifier": "com.ghostsweep12.subspace-proxy",
 	"build": {

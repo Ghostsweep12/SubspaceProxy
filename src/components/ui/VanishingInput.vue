@@ -68,6 +68,7 @@ onBeforeUnmount(() => {
 
 <template>
   <form
+    @submit.prevent
     class="relative mx-auto h-12 w-full max-w-xl overflow-hidden rounded-full bg-white shadow-[0px_2px_3px_-1px_rgba(0,0,0,0.1),_0px_1px_0px_0px_rgba(25,28,33,0.02),_0px_0px_0px_1px_rgba(25,28,33,0.08)] transition duration-200 dark:bg-zinc-800"
     :class="[vanishingText && 'bg-gray-50']"
   >
@@ -84,7 +85,7 @@ onBeforeUnmount(() => {
       v-model="vanishingText"
       :disabled="animating"
       type="text"
-      class="relative z-50 size-full rounded-full border-none bg-transparent pr-10 pl-4 text-sm text-black focus:ring-0 focus:outline-none sm:pl-10 sm:text-base dark:text-white"
+      class="relative z-50 size-full rounded-full border-none bg-transparent pr-10 pl-4 text-sm text-black focus:ring-0 focus:outline-none sm:pl-5 sm:text-base dark:text-white"
       :class="{ 'text-transparent dark:text-transparent': animating }"
     />
 
@@ -102,7 +103,7 @@ onBeforeUnmount(() => {
       >
         <p
           :key="currentPlaceholder"
-          class="w-[calc(100%-2rem)] truncate pl-4 text-left text-sm font-normal text-neutral-500 sm:pl-10 sm:text-base dark:text-zinc-500"
+          class="w-[calc(100%-2rem)] truncate pl-4 text-left text-sm font-normal text-neutral-500 sm:pl-5 sm:text-base dark:text-zinc-500"
         >
           {{ placeholders[currentPlaceholder] }}
         </p>

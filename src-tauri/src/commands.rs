@@ -74,8 +74,6 @@ pub fn call_bash_function(app: &AppHandle, function_name: &str, args: &[&str]) -
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-    println!("code={return_code}, stdout={stdout}, stderr={stderr}");
-
     Ok((return_code, stdout, stderr))
 }
 
