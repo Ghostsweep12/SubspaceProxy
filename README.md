@@ -15,7 +15,6 @@ It allows you to route specific processes (like Steam, Firefox, or terminal comm
 * **Network Isolation:** Uses Linux Namespaces (`ip netns`) to sandbox applications networking.
 * **Protocols:** Connect via SOCKS5, SOCKS4, HTTP, Shadowsocks, and Relay. (More coming soon)
 * **Desktop Integration:** Automatically injects PulseAudio, PipeWire, Wayland, X11, and D-Bus environment variables, ensuring **GUI applications** work with sound and video.
-* **Tun2Socks Integration:** Tun2Socks converts both TCP and UDP traffic from the namespace into proxy-compatible packets.
 * **Diagnostics:** Built-in tools to **Ping** the target server and check **Port** status before launching.
 * **Smart Management:** Automatically handles virtual interfaces (`veth`, `tun`), routing tables, and cleanup.
 
@@ -23,7 +22,7 @@ It allows you to route specific processes (like Steam, Firefox, or terminal comm
 
 Imagine you computer as a house:
 
-1. **Namespace Creation:** The app creates a new Network Namespace (a sealed network environment). 
+1. **Namespace Creation:** The app creates a new Network Namespace (seperate network stack). 
 > *Like creating a new room in your house.*
 2. **Bridging:** It links the namespace to your host system using a **Veth (Virtual Ethernet)** pair. 
 > *A door to connect your house and your room.*
@@ -34,13 +33,13 @@ Imagine you computer as a house:
 
 ## Usage
 
-Before using the appimage, ensure your kernal supports namespace, veth, and tun/tap. As well as having fully functioning `iproute2`, `iputils`, and `bash` utilities.
+Before using the app, ensure your kernal supports namespace, veth, and tun/tap. As well as having fully functioning `iproute2`, `iputils`, and `bash` packages.
 
 ### 1. Creating a Profile
 
 1. Click **+ New** to create a profile.
 2. Enter your Proxy **Name** (cosmetic), **IP**, **Port**, and **Protocol**.
-3. (Optional) Configuring authentication (User/Pass) and other specifics in the advanced settings.
+3. (Optional) Configure authentication, such as user/protocol, password, and other specifics in the advanced settings.
 4. **Save** the profile.
 
 ### 2. Launching an Application
@@ -55,13 +54,13 @@ Before using the appimage, ensure your kernal supports namespace, veth, and tun/
 
 ### 3. Cleanup
 
-When finished, click **Clean** (Red). This destroys the namespace, deletes the virtual interfaces, and kills any processes within.
+When finished, click **Clean** (Red). This destroys the namespace, deletes the virtual interfaces, and kills all processes within.
 
 ## Warning
 
 * **Root Privileges:** This application requires `sudo` permissions to create namespaces and modify network interfaces.
-* **Non-Interactive:** Commands are launched non-interactively. You cannot run interactive shells like `bash` or `zsh` that require TTY input.
-* **System Modification:** While running, the app enables global IP forwarding (`sysctl -w net.ipv4.ip_forward=1`).
+* **Non-Interactive:** Commands are launched non-interactively. You cannot run interactive shells like `bash`, `zsh`, or `fish` that require TTY input.
+* **System Modifications:** While running, the app enables global IP forwarding (`sysctl -w net.ipv4.ip_forward=1`).
 * **Container Conflicts:** May misbehave if run inside Docker or other sandboxed environments due to nested namespace restrictions.
 
 ## Developer Installation
