@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Library imports
 import { invoke } from "@tauri-apps/api/core";
-import { onMounted, onUnmounted, reactive, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -12,7 +12,7 @@ import RippleButton from "@/components/ui/RippleButton.vue";
 import VanishingInput from "@/components/ui/VanishingInput.vue";
 
 // Profile making
-const show_modal = ref(false);
+const show_edit_modal = ref(false);
 const show_advanced_modal = ref(false);
 const save_status = ref("");
 const editing_path = ref<string | null>(null);
@@ -185,21 +185,6 @@ async function refresh_active_namespaces() {
 	}
 }
 
-// Refresh
-let refreshTimer: number | null = null;
-onMounted(() => {
-	load_profiles();
-	refresh_active_namespaces();
-	refreshTimer = window.setInterval(() => {
-		load_profiles();
-		refresh_active_namespaces();
-	}, 10000);
-});
-
-onUnmounted(() => {
-	if (refreshTimer) clearInterval(refreshTimer);
-});
-
 // Reset Form
 function reset_form() {
 	form.name = "";
@@ -221,13 +206,19 @@ function apply_random_network_values() {
 	form.veth_ns_ip = `10.200.${r}.2`;
 }
 
+// Initial load
+onMounted(() => {
+	load_profiles();
+	refresh_active_namespaces();
+});
+
 // Button functions here
 // New profile
 function new_profile() {
 	reset_form();
 	apply_random_network_values();
 	editing_path.value = null;
-	show_modal.value = true;
+	show_edit_modal.value = true;
 }
 
 // Edit Profile
@@ -250,11 +241,11 @@ function edit_profile(index: number) {
 	form.veth_ns_ip = p.profile.veth_ns_ip || "";
 
 	editing_path.value = p.path;
-	show_modal.value = true;
+	show_edit_modal.value = true;
 }
 
 // Delete Profile
-async function delete_profile_confirm(index: number) {
+async function delete_profile(index: number) {
 	const p = profiles.value[index];
 	if (
 		await confirm(`Are you sure you want to delete profile "${p.filename}"?`)
@@ -319,7 +310,7 @@ async function save_profile() {
 			save_status.value.includes("success") ||
 			!save_status.value.includes("Error")
 		) {
-			show_modal.value = false;
+			show_edit_modal.value = false;
 			save_status.value = "";
 			editing_path.value = null;
 			load_profiles();
@@ -468,7 +459,7 @@ async function cleanup_profile(index: number) {
 							</RippleButton>
 
 							<RippleButton 
-								@click="delete_profile_confirm(index)"
+								@click="delete_profile(index)"
 								:disabled="active_namespaces.some(ns => ns.name === p.profile.namespace)"
 								class="sm-btn bg-red-600 text-white"
 							>
@@ -524,7 +515,7 @@ async function cleanup_profile(index: number) {
 			</div>
 		</div>
 
-		<div v-if="show_modal" class="modal-overlay">
+		<div v-if="show_edit_modal" class="modal-overlay">
 			<div class="modal-content">
 				<h2>{{ editing_path ? 'Edit Profile' : 'New Proxy Profile' }}</h2>
 				<div class="form-grid">
@@ -571,7 +562,7 @@ async function cleanup_profile(index: number) {
 				</div>
 				
 				<div class="modal-actions">
-					<RippleButton @click="show_modal = false" class="bg-red-600">Cancel</RippleButton>
+					<RippleButton @click="show_edit_modal = false" class="bg-red-600">Cancel</RippleButton>
 					<RippleButton @click="save_profile" class="bg-blue-600">Save</RippleButton>
 					<p>{{ save_status }}</p>
 				</div>

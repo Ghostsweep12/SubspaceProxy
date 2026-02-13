@@ -3,7 +3,7 @@ name = "SubspaceProxy"
 version = "1.0.0-alpha"
 description = "A Linux network namespace utility for isolated and proxied application environments."
 authors = ["you"]
-edition = "2026"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

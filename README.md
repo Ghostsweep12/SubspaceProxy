@@ -45,16 +45,17 @@ Before using the app, ensure your kernal supports namespace, veth, and tun/tap. 
 ### 2. Launching an Application
 
 1. **Test Connection:** Use the `Ping` and `Port` buttons to double check the connection that is about to be made.
-2. **Setup Environment:** Click the **Setup** button (Purple). This creates the namespace and virtual interfaces.
+2. **Setup Environment:** Click the **Setup** button. This creates the namespace and virtual interfaces.
 3. **Enter Command:** In the top command bar, type the application you want to run:
 * `firefox`
 * `steam`
 * `curl ifconfig.me`
-4. **Run:** Click the **Run** button (Green) to launch the app. You can re-enter the command and run multiple apps in the same namespace!
+4. **Run:** Click the **Run** button to launch the command in the active namespace whose button was clicked. You can re-enter the command and run multiple times in the same namespace!
 
 ### 3. Cleanup
 
-When finished, click **Clean** (Red). This destroys the namespace, deletes the virtual interfaces, and kills all processes within.
+When finished, click **Clean**. This destroys the namespace, deletes the virtual interfaces, and kills all processes within.
+Closing the app **will not** clean up automatically, the namespace and processes are independant of the app and will continue running.
 
 ## Warning
 

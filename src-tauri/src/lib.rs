@@ -3,8 +3,9 @@ mod commands;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Disable the DMABUF renderer (fixes Linux rendering)
-    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-
+    unsafe {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     tauri::Builder::default()
         // Vue to Rust FFI here
         .invoke_handler(tauri::generate_handler![
