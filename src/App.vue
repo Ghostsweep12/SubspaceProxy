@@ -11,29 +11,6 @@ import {
 import RippleButton from "@/components/ui/RippleButton.vue";
 import VanishingInput from "@/components/ui/VanishingInput.vue";
 
-// Profile making
-const show_edit_modal = ref(false);
-const show_advanced_modal = ref(false);
-const save_status = ref("");
-const editing_path = ref<string | null>(null);
-const sudo_mode = ref(false);
-
-async function toggle_sudo_mode() {
-	if (!sudo_mode.value) {
-		try {
-			await invoke("request_sudo");
-			sudo_mode.value = true;
-			await refresh_active_namespaces();
-		} catch (e) {
-			sudo_mode.value = false;
-			alert("Failed to get sudo or action cancelled.");
-		}
-	} else {
-		sudo_mode.value = false;
-		await refresh_active_namespaces();
-	}
-}
-
 // Types
 type profile = {
 	ip?: string;
@@ -169,6 +146,45 @@ const cmd_placeholders = [
 	"steam",
 ];
 
+// Initial load
+onMounted(async () => {
+	await load_profiles();
+	await refresh_active_namespaces();
+});
+
+// Sudo
+const show_sudo_modal = ref(false);
+const sudo_mode = ref(false);
+const sudo_password_input = ref("");
+
+async function toggle_sudo_mode() {
+	if (!sudo_mode.value) {
+		sudo_password_input.value = "";
+		show_sudo_modal.value = true;
+	} else {
+		try {
+			await invoke("stop_sudo");
+			sudo_mode.value = false;
+			await refresh_active_namespaces();
+		} catch (e) {
+			console.error("Failed to stop sudo:", e);
+		}
+	}
+}
+
+async function confirm_sudo() {
+	if (!sudo_password_input.value) return;
+	try {
+		await invoke("request_sudo", { password: sudo_password_input.value });
+		sudo_mode.value = true;
+		show_sudo_modal.value = false;
+		await refresh_active_namespaces();
+	} catch (e) {
+		alert(`Failed to get sudo: ${e}`);
+		sudo_mode.value = false;
+	}
+}
+
 // Profile List
 const profiles = ref<profile_entry[]>([]);
 const active_namespaces = ref<namespace_info[]>([]);
@@ -195,6 +211,7 @@ async function load_profiles() {
 	}
 }
 
+// Refresh Namespaces
 async function refresh_active_namespaces() {
 	try {
 		active_namespaces.value = await invoke<namespace_info[]>("get_active_namespaces");
@@ -224,13 +241,11 @@ function apply_random_network_values() {
 	form.veth_ns_ip = `10.200.${r}.2`;
 }
 
-// Initial load
-onMounted(async () => {
-	await load_profiles();
-	await refresh_active_namespaces();
-});
-
 // New profile
+const show_edit_modal = ref(false);
+const show_advanced_modal = ref(false);
+const editing_path = ref<string | null>(null);
+
 function new_profile() {
 	reset_form();
 	apply_random_network_values();
@@ -277,6 +292,8 @@ async function delete_profile(index: number) {
 }
 
 // Save Profile
+const save_status = ref("");
+
 async function save_profile() {
 	form_errors.name = !form.name;
 	form_errors.ip = !form.ip;
@@ -421,7 +438,6 @@ async function cleanup_profile(index: number) {
 		p.is_cleaning = false;
 	}
 }
-
 </script>
 
 <template>
@@ -539,6 +555,28 @@ async function cleanup_profile(index: number) {
 							{{ p.clean_status }}
 						</RippleButton>
 					</div>
+				</div>
+			</div>
+		</div>
+
+		<div v-if="show_sudo_modal" class="modal-overlay">
+			<div class="modal-content">
+				<h2>Sudo Password Required</h2>
+				<p>This action requires elevated privileges.</p>
+				<div class="form-group">
+					<label>Password</label>
+					<input 
+						type="password" 
+						v-model="sudo_password_input" 
+						class="w-full p-2 border rounded bg-gray-50" 
+						placeholder="Enter sudo password..."
+						@keyup.enter="confirm_sudo"
+						auto-focus
+					/>
+				</div>
+				<div class="modal-actions">
+					<RippleButton @click="show_sudo_modal = false" class="bg-red-600">Cancel</RippleButton>
+					<RippleButton @click="confirm_sudo" class="bg-blue-600">Confirm</RippleButton>
 				</div>
 			</div>
 		</div>

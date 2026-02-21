@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use tauri::path::BaseDirectory;
-use tauri::AppHandle;
-use tauri::Manager;
+use tauri::{AppHandle, Manager, State};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Profile {
@@ -21,6 +22,10 @@ pub struct Profile {
     dns: String,
 }
 
+pub struct SudoState {
+    pub password: Mutex<Option<String>>,
+}
+
 #[derive(Serialize, Debug)]
 pub struct ProfileEntry {
     filename: String,
@@ -35,8 +40,10 @@ pub struct NamespaceInfo {
 }
 
 pub fn call_bash_function(app: &AppHandle, function_name: &str, args: &[&str]) -> Result<(i32, String, String), String> {
-    // Call a bash function from functions.sh and supply it arguements, then capture its output
-    // Dependency paths here
+    // Call a bash function from functions.sh and supply it arguments, then capture its output and return code. If sudo password is set, run with sudo and supply the password via stdin.
+    let sudo_state = app.state::<SudoState>();
+    let password_lock = sudo_state.password.lock().unwrap();
+
     let functions_path = app
         .path()
         .resolve("functions.sh", BaseDirectory::Resource)
@@ -47,34 +54,90 @@ pub fn call_bash_function(app: &AppHandle, function_name: &str, args: &[&str]) -
         .resolve("tun2socks-x86_64-unknown-linux-gnu", BaseDirectory::Resource)
         .map_err(|e| format!("Failed to resolve tun2socks binary: {e}"))?;
 
+    let current_user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
+
     let bash_command = format!(
-        "set -euo pipefail; source '{}' && {} \"$@\"",
+        "export TUN2SOCKS='{}'; export SUDO_USER='{}'; set -euo pipefail; source '{}' && {} \"$@\"",
+        tun2socks_path.display(),
+        current_user,
         functions_path.display(),
         function_name
     );
 
-    let mut command = Command::new("bash");
-    
-    // Inject dependencies here
-    command.env("TUN2SOCKS", tun2socks_path);
-    
-    command.arg("-c").arg(bash_command).arg("--");
+    let mut command = if let Some(_) = &*password_lock {
+        let mut cmd = Command::new("sudo");
+        cmd.arg("-S").arg("bash").arg("-c").arg(bash_command).arg("--");
+        cmd
+    } else {
+        let mut cmd = Command::new("bash");
+        cmd.arg("-c").arg(bash_command).arg("--");
+        cmd
+    };
 
     for arg in args {
         command.arg(arg);
     }
 
-    let output = command
+    let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to run bash: {e}"))?;
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn bash: {e}"))?;
+
+    if let Some(password) = &*password_lock {
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(format!("{}\n", password).as_bytes());
+        }
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for output: {e}"))?;
 
     let return_code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
     Ok((return_code, stdout, stderr))
+}
+
+#[tauri::command]
+pub async fn request_sudo(password: String, state: State<'_, SudoState>) -> Result<(), String> {
+    // Verify the password by running a simple sudo command and checking if it succeeds. If it does, store the password in state for later use.
+    let mut child = Command::new("sudo")
+        .arg("-S")
+        .arg("true")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn sudo for verification: {}", e))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(format!("{}\n", password).as_bytes());
+    }
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for sudo verification: {}", e))?;
+
+    if status.success() {
+        let mut p = state.password.lock().unwrap();
+        *p = Some(password);
+        Ok(())
+    } else {
+        Err("Incorrect password".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn stop_sudo(state: State<'_, SudoState>) -> Result<(), String> {
+    // Clear stored password and invalidate sudo session
+    let mut p = state.password.lock().unwrap();
+    *p = None;
+    let _ = Command::new("sudo").arg("-k").status();
+    Ok(())
 }
 
 #[tauri::command]

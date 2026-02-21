@@ -1,6 +1,5 @@
 function ping_test {
     # Check if a host is reachable via ping
-    # Inputs: 1: IP
     local IP=$1
     if ! ping -c 3 -W 5 "$IP"; then
         return 1
@@ -10,7 +9,6 @@ function ping_test {
 
 function port_test {
     # Check if a specific port on a host is open
-    # Inputs: 1: IP, 2: Port
     local IP=$1
     local PORT=$2
     if ! timeout 1 bash -c "echo > /dev/tcp/$IP/$PORT"; then
@@ -28,10 +26,9 @@ function get_active_namespaces {
 
 function get_ns_pids {
     # Get PIDs inside a given namespace
-    # Inputs: 1: NS
     local NS=$1
     
-    local PIDS=$(sudo ip netns pids "$NS" 2>/dev/null)
+    local PIDS=$(ip netns pids "$NS" 2>/dev/null)
     
     if [ -z "$PIDS" ]; then
         echo ""
@@ -45,7 +42,6 @@ function get_ns_pids {
 
 function setup_namespace {
     # Set up network namespace, virtual ethernet pair, TUN interface, and DNS.
-    # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: TUN_IP 6: VETH_HOST, 7: VETH_NS, 8: VETH_HOST_IP, 9: VETH_NS_IP, 10: DNS
     local IP=$1
     local PORT=$2
     local NS=$3
@@ -57,37 +53,35 @@ function setup_namespace {
     local VETH_NS_IP=$9
     local DNS=${10}
     # Create isolated enviroment
-    sudo ip netns add "$NS"
-    sudo ip netns exec "$NS" ip link set lo up
+    ip netns add "$NS"
+    ip netns exec "$NS" ip link set lo up
     #Create link from enviroment to host
-    sudo ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
-    sudo ip link set "$VETH_NS" netns "$NS"
+    ip link add "$VETH_HOST" type veth peer name "$VETH_NS"
+    ip link set "$VETH_NS" netns "$NS"
     # Configure Host Side
-    sudo ip addr add "$VETH_HOST_IP/24" dev "$VETH_HOST"
-    sudo ip link set "$VETH_HOST" up
+    ip addr add "$VETH_HOST_IP/24" dev "$VETH_HOST"
+    ip link set "$VETH_HOST" up
     # Configure Namespace Side
-    sudo ip netns exec "$NS" ip addr add "$VETH_NS_IP/24" dev "$VETH_NS"
-    sudo ip netns exec "$NS" ip link set "$VETH_NS" up
+    ip netns exec "$NS" ip addr add "$VETH_NS_IP/24" dev "$VETH_NS"
+    ip netns exec "$NS" ip link set "$VETH_NS" up
     # Enable IP forwarding so packets can return
-    sudo sysctl -w net.ipv4.ip_forward=1 > /dev/null
+    sysctl -w net.ipv4.ip_forward=1 > /dev/null
     # Create network interface for namespace
-    sudo ip netns exec "$NS" ip tuntap add mode tun dev "$TUN"
-    sudo ip netns exec "$NS" ip addr add "$TUN_IP/24" dev "$TUN"
-    sudo ip netns exec "$NS" ip link set "$TUN" up
+    ip netns exec "$NS" ip tuntap add mode tun dev "$TUN"
+    ip netns exec "$NS" ip addr add "$TUN_IP/24" dev "$TUN"
+    ip netns exec "$NS" ip link set "$TUN" up
     # All data gets sent to TUN
-    sudo ip netns exec "$NS" ip route add default dev "$TUN"
+    ip netns exec "$NS" ip route add default dev "$TUN"
     # Proxied data leaves
-    sudo ip netns exec "$NS" ip route add "$IP" via "$VETH_HOST_IP"
-    sudo mkdir -p /etc/netns/"$NS"
-    sudo tee /etc/netns/"$NS"/resolv.conf > /dev/null
+    ip netns exec "$NS" ip route add "$IP" via "$VETH_HOST_IP"
+    mkdir -p /etc/netns/"$NS"
+    echo "nameserver $DNS" | tee /etc/netns/"$NS"/resolv.conf > /dev/null
 }
 
 function run_command_in_namespace {
     # Run command in the namespace with reconstructed user environment
-    # Inputs: 1: NS, 2: CMD
     local NS=$1
     local CMD=$2
-
     # Manually rebuild the user's environment because sudo/netns strips it.
     REAL_USER=${SUDO_USER:-$USER}
     REAL_UID=$(id -u "$REAL_USER")
@@ -105,9 +99,9 @@ function run_command_in_namespace {
     TARGET_DISPLAY="${DISPLAY:-:0}"
     TARGET_XAUTH="${XAUTHORITY:-$REAL_HOME/.Xauthority}"
     TARGET_WAYLAND="${WAYLAND_DISPLAY:-wayland-0}"
-
     # Export necessary environment variables and run the command in the namespace
-    sudo ip netns exec "$NS" bash -c "
+    # sudo -u here to drop privileges back to the real user
+    ip netns exec "$NS" bash -c "
         sudo -u '$REAL_USER' bash -c '
             export XDG_RUNTIME_DIR=\"$REAL_XDG_RUNTIME\"
             export DBUS_SESSION_BUS_ADDRESS=\"$DBUS_SOCK\"
@@ -125,23 +119,21 @@ function run_command_in_namespace {
 
 function cleanup {
     # Clean up the created namespace and related resources
-    # Inputs: 1: namespace, 2: veth host name
     local NS=$1
     local VETH_HOST=$2
 
-    PIDS=$(sudo ip netns pids "$NS")
+    PIDS=$(ip netns pids "$NS" 2>/dev/null)
     if [ -n "$PIDS" ]; then
-        sudo kill -9 $PIDS 2>/dev/null || true
+        kill -9 $PIDS 2>/dev/null || true
     fi
 
-    sudo ip netns delete "$NS" 2>/dev/null || true
-    sudo ip link delete "$VETH_HOST" 2>/dev/null || true
-    sudo rm -rf /etc/netns/"$NS"
+    ip netns delete "$NS" 2>/dev/null || true
+    ip link delete "$VETH_HOST" 2>/dev/null || true
+    rm -rf /etc/netns/"$NS"
 }
 
 function tun2socks_socks5 {
     # Start tun2socks with SOCKS5, TCP/UDP
-    # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: USERNAME, 6: PASSWORD (5/6 optional)
     local IP=$1
     local PORT=$2
     local NS=$3
@@ -153,7 +145,7 @@ function tun2socks_socks5 {
     else
         AUTH="$USERNAME:$PASSWORD@"
     fi
-    sudo ip netns exec "$NS" bash -c "
+    ip netns exec "$NS" bash -c "
         set -m
         $TUN2SOCKS \
             -device tun://$TUN \
@@ -166,7 +158,6 @@ function tun2socks_socks5 {
 
 function tun2socks_socks4 {
     # Start tun2socks with SOCKS4, TCP only
-    # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: USERID (5 optional)
     local IP=$1
     local PORT=$2
     local NS=$3
@@ -177,7 +168,7 @@ function tun2socks_socks4 {
     else
         USERID="$USERID@"
     fi
-    sudo ip netns exec "$NS" bash -c "
+    ip netns exec "$NS" bash -c "
         set -m
         $TUN2SOCKS \
             -device tun://$TUN \
@@ -190,12 +181,11 @@ function tun2socks_socks4 {
 
 function tun2socks_http {
     # Start tun2socks with HTTP, TCP only
-    # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN
     local IP=$1
     local PORT=$2
     local NS=$3
     local TUN=$4
-    sudo ip netns exec "$NS" bash -c "
+    ip netns exec "$NS" bash -c "
         set -m
         $TUN2SOCKS \
             -device tun://$TUN \
@@ -208,7 +198,6 @@ function tun2socks_http {
 
 function tun2socks_shadowsocks {
     # Start tun2socks with Shadowsocks, TCP/UDP
-    # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: PASSWORD, 6: METHOD (5/6 optional)
     local IP=$1
     local PORT=$2
     local NS=$3
@@ -220,7 +209,7 @@ function tun2socks_shadowsocks {
     else
         AUTH="$METHOD:$PASSWORD@"
     fi
-    sudo ip netns exec "$NS" bash -c "
+    ip netns exec "$NS" bash -c "
         set -m
         $TUN2SOCKS \
             -device tun://$TUN \
@@ -233,7 +222,6 @@ function tun2socks_shadowsocks {
 
 function tun2socks_relay {
     # Start tun2socks with relay, UDP over TCP
-    # Inputs: 1: IP, 2: PORT, 3: NS, 4: TUN, 5: USERNAME, 6: PASSWORD (5/6 optional)
     local IP=$1
     local PORT=$2
     local NS=$3
@@ -245,7 +233,7 @@ function tun2socks_relay {
     else
         AUTH="$USERNAME:$PASSWORD@"
     fi
-    sudo ip netns exec "$NS" bash -c "
+    ip netns exec "$NS" bash -c "
         set -m
         $TUN2SOCKS \
             -device tun://$TUN \
@@ -258,10 +246,9 @@ function tun2socks_relay {
 
 function tun2socks_direct {
     # Start tun2socks with direct connection, for testing, TCP/UDP
-    # Inputs: 1: NS, 2: TUN
     local NS=$1
     local TUN=$2
-    sudo ip netns exec "$NS" bash -c "
+    ip netns exec "$NS" bash -c "
         set -m
         $TUN2SOCKS \
             -device tun://$TUN \
@@ -274,10 +261,9 @@ function tun2socks_direct {
 
 function tun2socks_reject {
     # Start tun2socks and simply block all outgoing connections, for testing
-    # Inputs: 1: NS, 2: TUN
     local NS=$1
     local TUN=$2
-    sudo ip netns exec "$NS" bash -c "
+    ip netns exec "$NS" bash -c "
         set -m
         $TUN2SOCKS \
             -device tun://$TUN \
