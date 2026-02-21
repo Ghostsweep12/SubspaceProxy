@@ -1,9 +1,10 @@
 # Subspace Proxy Dev Build
 
-[![status](https://shields.io/badge/status-Developer_Build-green.svg)](https://github.com/Ghostsweep12/SubspaceProxy)
+[![status](https://shields.io/badge/status-Developer_Build-red.svg)](https://github.com/Ghostsweep12/SubspaceProxy)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)
 ![Tauri](https://img.shields.io/badge/tauri-%2324C8DB.svg?style=for-the-badge&logo=tauri&logoColor=%23FFFFFF)
 ![Vue](https://img.shields.io/badge/Vue.js-35495E?style=for-the-badge&logo=vuedotjs&logoColor=4FC08D)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=Vite&logoColor=white)
 [![Tun2Socks](https://shields.io/badge/Tun2Socks-blue.svg)](https://github.com/xjasonlyu/tun2socks)
 
 **Subspace Proxy** is a specialized, lightweight GUI application designed to isolate Linux applications within their own **Network Namespaces**.
@@ -66,7 +67,7 @@ Closing the app **will not** clean up automatically, the namespace and processes
 
 ## Developer Installation
 
-This project is built using **Tauri**, **Vue 3**, and **Tun2Socks**.
+This project is built using **Tauri**, **Vue 3**, **Vite**, and **Tun2Socks**.
 
 ### Prerequisites
 

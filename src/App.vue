@@ -16,13 +16,25 @@ const show_edit_modal = ref(false);
 const show_advanced_modal = ref(false);
 const save_status = ref("");
 const editing_path = ref<string | null>(null);
-const form_errors = reactive({
-	name: false,
-	ip: false,
-	port: false,
-	protocol: false,
-});
+const sudo_mode = ref(false);
 
+async function toggle_sudo_mode() {
+	if (!sudo_mode.value) {
+		try {
+			await invoke("request_sudo");
+			sudo_mode.value = true;
+			await refresh_active_namespaces();
+		} catch (e) {
+			sudo_mode.value = false;
+			alert("Failed to get sudo or action cancelled.");
+		}
+	} else {
+		sudo_mode.value = false;
+		await refresh_active_namespaces();
+	}
+}
+
+// Types
 type profile = {
 	ip?: string;
 	port?: string;
@@ -59,6 +71,14 @@ type namespace_info = {
 	name: string;
 	processes: string;
 };
+
+// Forms
+const form_errors = reactive({
+	name: false,
+	ip: false,
+	port: false,
+	protocol: false,
+});
 
 const form = reactive({
 	name: "",
@@ -171,17 +191,15 @@ async function load_profiles() {
 			is_cleaning: false,
 		}));
 	} catch (e) {
-		alert(`Failed to list profiles: ${e}`);
+		console.error(`Failed to list profiles: ${e}`);
 	}
 }
 
 async function refresh_active_namespaces() {
 	try {
-		active_namespaces.value = await invoke<namespace_info[]>(
-			"get_active_namespaces",
-		);
+		active_namespaces.value = await invoke<namespace_info[]>("get_active_namespaces");
 	} catch (e) {
-		alert(`Failed to get namespaces: ${e}`);
+		console.error(`Failed to get namespaces: ${e}`);
 	}
 }
 
@@ -207,12 +225,11 @@ function apply_random_network_values() {
 }
 
 // Initial load
-onMounted(() => {
-	load_profiles();
-	refresh_active_namespaces();
+onMounted(async () => {
+	await load_profiles();
+	await refresh_active_namespaces();
 });
 
-// Button functions here
 // New profile
 function new_profile() {
 	reset_form();
@@ -251,7 +268,7 @@ async function delete_profile(index: number) {
 		await confirm(`Are you sure you want to delete profile "${p.filename}"?`)
 	) {
 		try {
-			await invoke("delete_profile", { path: p.path });
+			await invoke("delete_profile", {path: p.path});
 			load_profiles();
 		} catch (e) {
 			alert(`Failed to delete: ${e}`);
@@ -300,7 +317,7 @@ async function save_profile() {
 			const old_filename = editing_path.value.split(/[\\/]/).pop();
 
 			if (old_filename !== new_filename) {
-				await invoke("delete_profile", { path: editing_path.value });
+				await invoke("delete_profile", {path: editing_path.value});
 			}
 		}
 
@@ -326,7 +343,7 @@ async function ping_profile(index: number) {
 	p.is_pinging = true;
 	p.ping_status = "...";
 	try {
-		const res = await invoke<string>("ping", { ip: p.profile.ip });
+		const res = await invoke<string>("ping", {ip: p.profile.ip});
 		p.ping_status = `${res}ms`;
 	} catch (e) {
 		p.ping_status = `No Response: ${e}`;
@@ -341,10 +358,7 @@ async function port_check_profile(index: number) {
 	p.is_port_checking = true;
 	p.port_status = "...";
 	try {
-		const res = await invoke<string>("port", {
-			ip: p.profile.ip,
-			port: p.profile.port,
-		});
+		const res = await invoke<string>("port", {ip: p.profile.ip,port: p.profile.port});
 		p.port_status = res;
 	} catch (e) {
 		p.port_status = `No Response: ${e}`;
@@ -359,7 +373,7 @@ async function setup_ns_profile(index: number) {
 	p.is_setting_up = true;
 	p.ns_status = "Setting up...";
 	try {
-		await invoke("setup_namespace", { profilePath: p.path });
+		await invoke("setup_namespace", {profilePath: p.path});
 		p.ns_status = "Ready";
 		refresh_active_namespaces();
 	} catch (e) {
@@ -379,7 +393,7 @@ async function run_profile(index: number) {
 	p.is_running = true;
 	p.run_status = "Launching...";
 	try {
-		await invoke("run", { profilePath: p.path, cmd: cmd.value });
+		await invoke("run", {profilePath: p.path, cmd: cmd.value});
 		p.run_status = "Sent";
 		refresh_active_namespaces();
 	} catch (e) {
@@ -398,7 +412,7 @@ async function cleanup_profile(index: number) {
 	p.is_cleaning = true;
 	p.clean_status = "Cleaning...";
 	try {
-		await invoke("cleanup", { profilePath: p.path });
+		await invoke("cleanup", {profilePath: p.path});
 		p.clean_status = "Cleaned";
 		refresh_active_namespaces();
 	} catch (e) {
@@ -413,8 +427,19 @@ async function cleanup_profile(index: number) {
 <template>
 	<main class="container">
     	<div class="header">
-        	<h2 class="title">Subspace Proxy</h2>
-        
+        	<div class="title-row">
+            	<h2 class="title">Subspace Proxy</h2>
+				<div class="sudo-switch-container">
+					<label class="sudo-label">Sudo Mode</label>
+					<input
+						type="checkbox"
+						class="sudo-checkbox"
+						:checked="sudo_mode"
+						@click.prevent="toggle_sudo_mode"
+					/>
+				</div>
+			</div>
+
         	<div class="cmd-bar">
             	<label>Command:</label>
             	<VanishingInput v-model="cmd" :placeholders="cmd_placeholders" />
@@ -489,24 +514,27 @@ async function cleanup_profile(index: number) {
 
 						<RippleButton 
 							@click="setup_ns_profile(index)" 
-							:disabled="p.is_setting_up || active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							:disabled="!sudo_mode || p.is_setting_up || active_namespaces.some(ns => ns.name === p.profile.namespace)" 
 							class="sm-btn action-btn bg-purple-600"
+							:title="!sudo_mode ? 'Sudo Mode Required' : ''"
 						>
 							{{ p.ns_status }}
 						</RippleButton>
 
 						<RippleButton 
 							@click="run_profile(index)" 
-							:disabled="p.is_running || !cmd || !active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							:disabled="!sudo_mode || p.is_running || !cmd || !active_namespaces.some(ns => ns.name === p.profile.namespace)" 
 							class="sm-btn action-btn bg-green-600"
+							:title="!sudo_mode ? 'Sudo Mode Required' : ''"
 						>
 							{{ p.run_status }}
 						</RippleButton>
 
 						<RippleButton 
 							@click="cleanup_profile(index)" 
-							:disabled="p.is_cleaning || !active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							:disabled="!sudo_mode || p.is_cleaning || !active_namespaces.some(ns => ns.name === p.profile.namespace)" 
 							class="sm-btn action-btn bg-red-600"
+							:title="!sudo_mode ? 'Sudo Mode Required' : ''"
 						>
 							{{ p.clean_status }}
 						</RippleButton>
@@ -646,7 +674,37 @@ async function cleanup_profile(index: number) {
 }
 
 .title { 
-    text-align: center; margin-bottom: 1rem; 
+    text-align: center; margin-bottom: 0; 
+}
+
+.title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.sudo-switch-container {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: white;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.sudo-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #666;
+}
+
+.sudo-checkbox {
+	width: 1.2rem;
+	height: 1.2rem;
+	cursor: pointer;
+	accent-color: #2563eb;
 }
 
 .cmd-bar {
