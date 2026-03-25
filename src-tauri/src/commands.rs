@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use tauri::path::BaseDirectory;
@@ -39,7 +40,11 @@ pub struct NamespaceInfo {
     processes: String,
 }
 
-pub fn call_bash_function(app: &AppHandle, function_name: &str, args: &[&str]) -> Result<(i32, String, String), String> {
+pub fn call_bash_function(
+    app: &AppHandle,
+    function_name: &str,
+    args: &[&str],
+) -> Result<(String, String), String> {
     // Call a bash function from functions.sh and supply it arguments, then capture its output and return code. If sudo password is set, run with sudo and supply the password via stdin.
     let sudo_state = app.state::<SudoState>();
     let password_lock = sudo_state.password.lock().unwrap();
@@ -56,12 +61,51 @@ pub fn call_bash_function(app: &AppHandle, function_name: &str, args: &[&str]) -
 
     let current_user = std::env::var("USER").unwrap_or_else(|_| "root".to_string());
 
+    // When running from an AppImage with sudo, the root user cannot access the FUSE mount point of the AppImage.
+    // We work around this by copying the required files to /tmp/subspace_proxy if sudo is active and we are in an AppImage.
+    let is_appimage = std::env::var("APPIMAGE").is_ok();
+    let (final_functions_path, final_tun2socks_path) = if password_lock.is_some() && is_appimage {
+        let tmp_dir = std::env::temp_dir().join("subspace_proxy");
+        if !tmp_dir.exists() {
+            std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("Failed to create tmp dir: {e}"))?;
+            std::fs::set_permissions(&tmp_dir, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| format!("Failed to set tmp dir permissions: {e}"))?;
+        }
+
+        let tmp_functions = tmp_dir.join("functions.sh");
+        let tmp_tun2socks = tmp_dir.join("tun2socks");
+
+        // Only copy if they don't exist to save time and avoid "Text file busy"
+        if !tmp_functions.exists() {
+            std::fs::copy(&functions_path, &tmp_functions)
+                .map_err(|e| format!("Failed to copy functions.sh to tmp: {e}"))?;
+            std::fs::set_permissions(&tmp_functions, std::fs::Permissions::from_mode(0o644))
+                .map_err(|e| format!("Failed to set functions.sh permissions: {e}"))?;
+        }
+
+        if !tmp_tun2socks.exists() {
+            // Use remove_file first in case it somehow exists and is busy (ETXTBSY)
+            let _ = std::fs::remove_file(&tmp_tun2socks); 
+            std::fs::copy(&tun2socks_path, &tmp_tun2socks)
+                .map_err(|e| format!("Failed to copy tun2socks to tmp: {e}"))?;
+            std::fs::set_permissions(&tmp_tun2socks, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| format!("Failed to set tun2socks permissions: {e}"))?;
+        }
+
+        (
+            tmp_functions.to_string_lossy().to_string(),
+            tmp_tun2socks.to_string_lossy().to_string(),
+        )
+    } else {
+        (
+            functions_path.to_string_lossy().to_string(),
+            tun2socks_path.to_string_lossy().to_string(),
+        )
+    };
+
     let bash_command = format!(
         "export TUN2SOCKS='{}'; export SUDO_USER='{}'; set -euo pipefail; source '{}' && {} \"$@\"",
-        tun2socks_path.display(),
-        current_user,
-        functions_path.display(),
-        function_name
+        final_tun2socks_path, current_user, final_functions_path, function_name
     );
 
     let mut command = if let Some(_) = &*password_lock {
@@ -95,11 +139,19 @@ pub fn call_bash_function(app: &AppHandle, function_name: &str, args: &[&str]) -
         .wait_with_output()
         .map_err(|e| format!("Failed to wait for output: {e}"))?;
 
-    let return_code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-    Ok((return_code, stdout, stderr))
+    if !output.status.success() {
+        return Err(format!(
+            "Bash function '{}' failed with code {}: {}",
+            function_name,
+            output.status.code().unwrap_or(-1),
+            stderr.trim()
+        ));
+    }
+
+    Ok((stdout, stderr))
 }
 
 #[tauri::command]
@@ -175,12 +227,18 @@ pub async fn list_profiles(app: AppHandle) -> Result<Vec<ProfileEntry>, String> 
 #[tauri::command]
 pub async fn get_active_namespaces(app: AppHandle) -> Result<Vec<NamespaceInfo>, String> {
     // Read the currently active namespaces and their associated processes
-    let (_return_code, stdout, _stderr) = call_bash_function(&app, "get_active_namespaces", &[]).map_err(|e| e.to_string())?;
-    let ns_list: Vec<&str> = stdout.trim().split('\n').filter(|s| !s.is_empty()).collect();
-    
+    let (stdout, _stderr) = call_bash_function(&app, "get_active_namespaces", &[])
+        .map_err(|e| e.to_string())?;
+    let ns_list: Vec<&str> = stdout
+        .trim()
+        .split('\n')
+        .filter(|s| !s.is_empty())
+        .collect();
+
     let mut infos = Vec::new();
     for ns in ns_list {
-        let (_return_code, pstdout, _stderr) = call_bash_function(&app, "get_ns_pids", &[ns]).unwrap_or((0, "".to_string(), "".to_string()));
+        let (pstdout, _stderr) = call_bash_function(&app, "get_ns_pids", &[ns])
+            .unwrap_or(("".to_string(), "".to_string()));
         infos.push(NamespaceInfo {
             name: ns.to_string(),
             processes: pstdout.trim().to_string(),
@@ -373,7 +431,8 @@ pub async fn fetch_profile(profile_path: String) -> Result<Profile, String> {
 #[tauri::command]
 pub async fn ping(app: AppHandle, ip: &str) -> Result<String, String> {
     // Check the latency of the server
-    let (_return_code, stdout, _stderr) = call_bash_function(&app, "ping_test", &[ip]).map_err(|e| format!("Failed to ping server: {}", e))?;
+    let (stdout, _stderr) = call_bash_function(&app, "ping_test", &[ip])
+        .map_err(|e| format!("Failed to ping server: {}", e))?;
 
     let avg_ping = stdout
         .lines()
@@ -388,9 +447,9 @@ pub async fn ping(app: AppHandle, ip: &str) -> Result<String, String> {
         })
         .unwrap_or("0".to_string());
 
-        if avg_ping == "0" {
-            return Err("Server is unreachable".to_string());
-        }
+    if avg_ping == "0" {
+        return Err("Server is unreachable".to_string());
+    }
 
     Ok(avg_ping)
 }
@@ -398,8 +457,9 @@ pub async fn ping(app: AppHandle, ip: &str) -> Result<String, String> {
 #[tauri::command]
 pub async fn port(app: AppHandle, ip: &str, port: &str) -> Result<String, String> {
     // Check if the port is open
-    let (_return_code, stdout, _stderr) = call_bash_function(&app, "port_test", &[ip, port]).map_err(|e| e.to_string())?;
-    
+    let (stdout, _stderr) =
+        call_bash_function(&app, "port_test", &[ip, port]).map_err(|e| e.to_string())?;
+
     let words: Vec<&str> = stdout.split_whitespace().collect();
 
     let result = if words.len() >= 3 {

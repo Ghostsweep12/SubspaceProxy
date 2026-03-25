@@ -141,47 +141,28 @@ const veth_ns_ip_placeholders = [
 	"10.200.1.2 (default)"
 ];
 const cmd_placeholders = [
-	"curl ifconfig.me",
+	"discord",
 	"firefox",
 	"steam",
 ];
 
 // Initial load
 onMounted(async () => {
-	await load_profiles();
-	await refresh_active_namespaces();
+	refresh();
 });
 
-// Sudo
-const show_sudo_modal = ref(false);
-const sudo_mode = ref(false);
-const sudo_password_input = ref("");
-
-async function toggle_sudo_mode() {
-	if (!sudo_mode.value) {
-		sudo_password_input.value = "";
-		show_sudo_modal.value = true;
-	} else {
-		try {
-			await invoke("stop_sudo");
-			sudo_mode.value = false;
-			await refresh_active_namespaces();
-		} catch (e) {
-			console.error("Failed to stop sudo:", e);
-		}
-	}
+// Refresh
+async function refresh() {
+	await load_profiles();
+	await refresh_active_namespaces();
 }
 
-async function confirm_sudo() {
-	if (!sudo_password_input.value) return;
+// Refresh Namespaces
+async function refresh_active_namespaces() {
 	try {
-		await invoke("request_sudo", { password: sudo_password_input.value });
-		sudo_mode.value = true;
-		show_sudo_modal.value = false;
-		await refresh_active_namespaces();
+		active_namespaces.value = await invoke<namespace_info[]>("get_active_namespaces");
 	} catch (e) {
-		alert(`Failed to get sudo: ${e}`);
-		sudo_mode.value = false;
+		console.error(`Failed to get namespaces: ${e}`);
 	}
 }
 
@@ -211,12 +192,37 @@ async function load_profiles() {
 	}
 }
 
-// Refresh Namespaces
-async function refresh_active_namespaces() {
+// Sudo prompt
+const show_sudo_modal = ref(false);
+const sudo_mode = ref(false);
+const sudo_password_input = ref("");
+
+async function toggle_sudo_mode() {
+	if (!sudo_mode.value) {
+		sudo_password_input.value = "";
+		show_sudo_modal.value = true;
+	} else {
+		try {
+			await invoke("stop_sudo");
+			sudo_mode.value = false;
+			await refresh();
+		} catch (e) {
+			console.error("Failed to stop sudo:", e);
+		}
+	}
+}
+
+// Sudo elevation attempt
+async function confirm_sudo() {
+	if (!sudo_password_input.value) return;
 	try {
-		active_namespaces.value = await invoke<namespace_info[]>("get_active_namespaces");
+		await invoke("request_sudo", { password: sudo_password_input.value });
+		sudo_mode.value = true;
+		show_sudo_modal.value = false;
+		await refresh();
 	} catch (e) {
-		console.error(`Failed to get namespaces: ${e}`);
+		alert(`Failed to get sudo: ${e}`);
+		sudo_mode.value = false;
 	}
 }
 
@@ -251,44 +257,6 @@ function new_profile() {
 	apply_random_network_values();
 	editing_path.value = null;
 	show_edit_modal.value = true;
-}
-
-// Edit Profile
-function edit_profile(index: number) {
-	const p = profiles.value[index];
-
-	form.name = p.filename.replace(/_/g, " ");
-	form.ip = p.profile.ip || "";
-	form.port = p.profile.port || "";
-	form.protocol = p.profile.protocol || "";
-	form.dns = p.profile.dns || "8.8.8.8";
-	form.namespace = p.profile.namespace || "namespace";
-	form.username = p.profile.username || "";
-	form.password = p.profile.password || "";
-	form.tun_interface = p.profile.tun_interface || "";
-	form.tun_ip = p.profile.tun_ip || "";
-	form.veth_host = p.profile.veth_host || "veth_host";
-	form.veth_ns = p.profile.veth_ns || "veth_ns";
-	form.veth_host_ip = p.profile.veth_host_ip || "";
-	form.veth_ns_ip = p.profile.veth_ns_ip || "";
-
-	editing_path.value = p.path;
-	show_edit_modal.value = true;
-}
-
-// Delete Profile
-async function delete_profile(index: number) {
-	const p = profiles.value[index];
-	if (
-		await confirm(`Are you sure you want to delete profile "${p.filename}"?`)
-	) {
-		try {
-			await invoke("delete_profile", {path: p.path});
-			load_profiles();
-		} catch (e) {
-			alert(`Failed to delete: ${e}`);
-		}
-	}
 }
 
 // Save Profile
@@ -354,6 +322,44 @@ async function save_profile() {
 	}
 }
 
+// Edit Profile
+function edit_profile(index: number) {
+	const p = profiles.value[index];
+
+	form.name = p.filename.replace(/_/g, " ");
+	form.ip = p.profile.ip || "";
+	form.port = p.profile.port || "";
+	form.protocol = p.profile.protocol || "";
+	form.dns = p.profile.dns || "8.8.8.8";
+	form.namespace = p.profile.namespace || "namespace";
+	form.username = p.profile.username || "";
+	form.password = p.profile.password || "";
+	form.tun_interface = p.profile.tun_interface || "";
+	form.tun_ip = p.profile.tun_ip || "";
+	form.veth_host = p.profile.veth_host || "veth_host";
+	form.veth_ns = p.profile.veth_ns || "veth_ns";
+	form.veth_host_ip = p.profile.veth_host_ip || "";
+	form.veth_ns_ip = p.profile.veth_ns_ip || "";
+
+	editing_path.value = p.path;
+	show_edit_modal.value = true;
+}
+
+// Delete Profile
+async function delete_profile(index: number) {
+	const p = profiles.value[index];
+	if (
+		await confirm(`Are you sure you want to delete profile "${p.filename}"?`)
+	) {
+		try {
+			await invoke("delete_profile", {path: p.path});
+			load_profiles();
+		} catch (e) {
+			alert(`Failed to delete: ${e}`);
+		}
+	}
+}
+
 // Ping
 async function ping_profile(index: number) {
 	const p = profiles.value[index];
@@ -392,7 +398,7 @@ async function setup_ns_profile(index: number) {
 	try {
 		await invoke("setup_namespace", {profilePath: p.path});
 		p.ns_status = "Ready";
-		refresh_active_namespaces();
+		await refresh();
 	} catch (e) {
 		p.ns_status = `Failed: ${e}`;
 	} finally {
@@ -412,7 +418,7 @@ async function run_profile(index: number) {
 	try {
 		await invoke("run", {profilePath: p.path, cmd: cmd.value});
 		p.run_status = "Sent";
-		refresh_active_namespaces();
+		await refresh();
 	} catch (e) {
 		p.run_status = `Error: ${e}`;
 	} finally {
@@ -431,7 +437,7 @@ async function cleanup_profile(index: number) {
 	try {
 		await invoke("cleanup", {profilePath: p.path});
 		p.clean_status = "Cleaned";
-		refresh_active_namespaces();
+		await refresh();
 	} catch (e) {
 		p.clean_status = `Error: ${e}`;
 	} finally {
