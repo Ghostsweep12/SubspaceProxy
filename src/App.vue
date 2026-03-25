@@ -142,7 +142,7 @@ const veth_ns_ip_placeholders = [
 ];
 const cmd_placeholders = [
 	"curl ifconfig.me",
-	"flatpak run org.mozilla.firefox",
+	"firefox",
 	"steam",
 ];
 
@@ -446,7 +446,7 @@ async function cleanup_profile(index: number) {
         	<div class="title-row">
             	<h2 class="title">Subspace Proxy</h2>
 				<div class="sudo-switch-container">
-					<label class="sudo-label">Sudo Mode</label>
+					<label class="sudo-label">Sudo</label>
 					<input
 						type="checkbox"
 						class="sudo-checkbox"
@@ -494,6 +494,7 @@ async function cleanup_profile(index: number) {
 							<RippleButton 
 								@click="edit_profile(index)"
 								:disabled="active_namespaces.some(ns => ns.name === p.profile.namespace)"
+								:title="active_namespaces.some(ns => ns.name === p.profile.namespace) ? 'Cannot edit while namespace is active' : ''"
 								class="sm-btn bg-amber-500 text-white"
 							>
 								Edit
@@ -502,6 +503,7 @@ async function cleanup_profile(index: number) {
 							<RippleButton 
 								@click="delete_profile(index)"
 								:disabled="active_namespaces.some(ns => ns.name === p.profile.namespace)"
+								:title="active_namespaces.some(ns => ns.name === p.profile.namespace) ? 'Cannot delete while namespace is active' : ''"
 								class="sm-btn bg-red-600 text-white"
 							>
 								Delete
@@ -513,6 +515,7 @@ async function cleanup_profile(index: number) {
 						<RippleButton 
 							@click="ping_profile(index)" 
 							:disabled="p.is_pinging" 
+							:title="p.is_pinging ? 'Pinging...' : ''"
 							class="sm-btn action-btn"
 							:class="{'button-good': p.ping_status.includes('ms'), 'button-bad': p.ping_status === 'Error'}"
 						>
@@ -522,6 +525,7 @@ async function cleanup_profile(index: number) {
 						<RippleButton 
 							@click="port_check_profile(index)" 
 							:disabled="p.is_port_checking" 
+							:title="p.is_port_checking ? 'Checking...' : ''"
 							class="sm-btn action-btn"
 							:class="{'button-good': p.port_status === 'Open', 'button-bad': p.port_status === 'Error'}"
 						>
@@ -531,8 +535,8 @@ async function cleanup_profile(index: number) {
 						<RippleButton 
 							@click="setup_ns_profile(index)" 
 							:disabled="!sudo_mode || p.is_setting_up || active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							:title="!sudo_mode ? 'Sudo Mode Required' : p.is_setting_up ? 'Setting up...' : active_namespaces.some(ns => ns.name === p.profile.namespace) ? 'Namespace is already active' : ''"
 							class="sm-btn action-btn bg-purple-600"
-							:title="!sudo_mode ? 'Sudo Mode Required' : ''"
 						>
 							{{ p.ns_status }}
 						</RippleButton>
@@ -540,8 +544,8 @@ async function cleanup_profile(index: number) {
 						<RippleButton 
 							@click="run_profile(index)" 
 							:disabled="!sudo_mode || p.is_running || !cmd || !active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							:title="!sudo_mode ? 'Sudo Mode Required' : p.is_running ? 'Running...' : !cmd ? 'No command specified' : !active_namespaces.some(ns => ns.name === p.profile.namespace) ? 'Namespace must be active to run command' : ''"
 							class="sm-btn action-btn bg-green-600"
-							:title="!sudo_mode ? 'Sudo Mode Required' : ''"
 						>
 							{{ p.run_status }}
 						</RippleButton>
@@ -549,8 +553,8 @@ async function cleanup_profile(index: number) {
 						<RippleButton 
 							@click="cleanup_profile(index)" 
 							:disabled="!sudo_mode || p.is_cleaning || !active_namespaces.some(ns => ns.name === p.profile.namespace)" 
+							:title="!sudo_mode ? 'Sudo Mode Required' : p.is_cleaning ? 'Cleaning...' : !active_namespaces.some(ns => ns.name === p.profile.namespace) ? 'Namespace is not active' : ''"
 							class="sm-btn action-btn bg-red-600"
-							:title="!sudo_mode ? 'Sudo Mode Required' : ''"
 						>
 							{{ p.clean_status }}
 						</RippleButton>
@@ -561,8 +565,7 @@ async function cleanup_profile(index: number) {
 
 		<div v-if="show_sudo_modal" class="modal-overlay">
 			<div class="modal-content">
-				<h2>Sudo Password Required</h2>
-				<p>This action requires elevated privileges.</p>
+				<h2>Enter sudo password to run elevated commands</h2>
 				<div class="form-group">
 					<label>Password</label>
 					<input 

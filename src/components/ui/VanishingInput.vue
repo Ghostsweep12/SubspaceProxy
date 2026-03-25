@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 // Define interfaces for props and data structures
 interface Props {
@@ -13,19 +13,12 @@ const emit = defineEmits(["submit", "change"]);
 const vanishingText = defineModel<string>({
 	default: "",
 });
-const inputRef = useTemplateRef<HTMLInputElement>("inputRef");
 
 // normal refs
 const currentPlaceholder = ref<number>(0);
 const animating = ref<boolean>(false);
 const intervalRef = ref<number | null>(null);
 const animationFrame = ref<number | null>(null);
-
-// Focus on input when mounted
-onMounted(() => {
-	if (!inputRef.value) return;
-	inputRef.value.focus();
-});
 
 function changePlaceholder(): void {
 	intervalRef.value = window.setInterval(() => {

@@ -111,8 +111,9 @@ function run_command_in_namespace {
             export XAUTHORITY=\"$TARGET_XAUTH\"
             export WAYLAND_DISPLAY=\"$TARGET_WAYLAND\"
 
-            $CMD &
+            nohup $CMD > /tmp/subspace_app.log 2>&1 &
             echo \$!
+            disown
         '
     "
 }
@@ -147,12 +148,13 @@ function tun2socks_socks5 {
     fi
     ip netns exec "$NS" bash -c "
         set -m
-        $TUN2SOCKS \
-            -device tun://$TUN \
-            -proxy socks5://$IP:$PORT \
-            -loglevel warning \
-            > /dev/null 2>&1 &
+        nohup $TUN2SOCKS \
+            --device tun://$TUN \
+            --proxy socks5://$IP:$PORT \
+            --loglevel warning \
+            > /tmp/subspace_tun2socks.log 2>&1 &
         echo \$!
+        disown
     "
 }
 
@@ -170,12 +172,13 @@ function tun2socks_socks4 {
     fi
     ip netns exec "$NS" bash -c "
         set -m
-        $TUN2SOCKS \
-            -device tun://$TUN \
-            -proxy socks4://$USERID$IP:$PORT \
-            -loglevel warning \
-            > /dev/null 2>&1 &
+        nohup $TUN2SOCKS \
+            --device tun://$TUN \
+            --proxy socks4://$USERID$IP:$PORT \
+            --loglevel warning \
+            > /tmp/subspace_tun2socks.log 2>&1 &
         echo \$!
+        disown
     "
 }
 
@@ -187,12 +190,13 @@ function tun2socks_http {
     local TUN=$4
     ip netns exec "$NS" bash -c "
         set -m
-        $TUN2SOCKS \
-            -device tun://$TUN \
-            -proxy http://$IP:$PORT \
-            -loglevel warning \
-            > /dev/null 2>&1 &
+        nohup $TUN2SOCKS \
+            --device tun://$TUN \
+            --proxy http://$IP:$PORT \
+            --loglevel warning \
+            > /tmp/subspace_tun2socks.log 2>&1 &
         echo \$!
+        disown
     "
 }
 
@@ -211,12 +215,13 @@ function tun2socks_shadowsocks {
     fi
     ip netns exec "$NS" bash -c "
         set -m
-        $TUN2SOCKS \
-            -device tun://$TUN \
-            -proxy ss://$AUTH$IP:$PORT \
-            -loglevel warning \
-            > /dev/null 2>&1 &
+        nohup $TUN2SOCKS \
+            --device tun://$TUN \
+            --proxy ss://$AUTH$IP:$PORT \
+            --loglevel warning \
+            > /tmp/subspace_tun2socks.log 2>&1 &
         echo \$!
+        disown
     "
 }
 
@@ -235,12 +240,13 @@ function tun2socks_relay {
     fi
     ip netns exec "$NS" bash -c "
         set -m
-        $TUN2SOCKS \
-            -device tun://$TUN \
-            -proxy relay://$AUTH$IP:$PORT \
-            -loglevel warning \
-            > /dev/null 2>&1 &
+        nohup $TUN2SOCKS \
+            --device tun://$TUN \
+            --proxy relay://$AUTH$IP:$PORT \
+            --loglevel warning \
+            > /tmp/subspace_tun2socks.log 2>&1 &
         echo \$!
+        disown
     "
 }
 
@@ -250,12 +256,13 @@ function tun2socks_direct {
     local TUN=$2
     ip netns exec "$NS" bash -c "
         set -m
-        $TUN2SOCKS \
-            -device tun://$TUN \
-            -proxy direct:// \
-            -loglevel warning \
-            > /dev/null 2>&1 &
+        nohup $TUN2SOCKS \
+            --device tun://$TUN \
+            --proxy direct:// \
+            --loglevel warning \
+            > /tmp/subspace_tun2socks.log 2>&1 &
         echo \$!
+        disown
     "
 }
 
@@ -265,11 +272,12 @@ function tun2socks_reject {
     local TUN=$2
     ip netns exec "$NS" bash -c "
         set -m
-        $TUN2SOCKS \
-            -device tun://$TUN \
-            -proxy reject:// \
-            -loglevel warning \
-            > /dev/null 2>&1 &
+        nohup $TUN2SOCKS \
+            --device tun://$TUN \
+            --proxy reject:// \
+            --loglevel warning \
+            > /tmp/subspace_tun2socks.log 2>&1 &
         echo \$!
+        disown
     "
 }
